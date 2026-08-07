@@ -584,4 +584,4 @@ async function startApp() {
   console.log("🚀 Интернет-магазин 2.0 успешно запущен!");
 }
 
-startApp();
+startApp();  
