@@ -7,8 +7,11 @@ require("dotenv").config();
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || "8491952252";
-const PAYMENT_PROVIDER_TOKEN = process.env.PAYMENT_PROVIDER_TOKEN || "";
 const PORT = process.env.PORT || 3000;
+
+// 💳 РЕКВИЗИТЫ ДЛЯ ОПЛАТЫ (Банк Эсхата)
+const ESHATA_WALLET = process.env.ESHATA_WALLET || "+992035822424"; // Номер кошелька/карты
+const ESHATA_CARD_NAME = process.env.ESHATA_CARD_NAME || "Azam Р."; // Имя получателя
 
 const bot = new Bot(BOT_TOKEN);
 let db;
@@ -29,6 +32,8 @@ async function initDb() {
       address TEXT,
       items TEXT,
       total_price INTEGER,
+      payment_method TEXT DEFAULT 'cash',
+      receipt_photo TEXT,
       status TEXT DEFAULT 'new',
       is_paid INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -146,7 +151,8 @@ bot.callbackQuery("my_orders", async (ctx) => {
 
   let text = "<b>📜 ВАШИ ПОСЛЕДНИЕ ЗАКАЗЫ:</b>\n\n";
   orders.forEach((o) => {
-    text += `📦 <b>Заказ №${o.id}</b> | ${o.total_price} руб.\n`;
+    text += `📦 <b>Заказ №${o.id}</b> | ${o.total_price} сомони/руб.\n`;
+    text += `Оплата: ${o.payment_method === 'eshata' ? '💳 Эсхата Онлайн' : '💵 Наличные'}\n`;
     text += `Статус: ${o.status} | Дата: ${o.created_at}\n`;
     text += `Состав:\n${o.items}\n--------------------\n`;
   });
@@ -168,8 +174,8 @@ bot.callbackQuery("admin_orders", async (ctx) => {
   let text = "<b>📜 ПОСЛЕДНИЕ 10 ЗАКАЗОВ (АДМИН):</b>\n\n";
   orders.forEach((o) => {
     text += `🚨 <b>Заказ №${o.id}</b> (${o.username})\n`;
-    text += `Тел: ${o.phone} | Сумма: ${o.total_price} руб.\n`;
-    text += `Статус: ${o.status} | Оплата: ${o.is_paid ? "✅ Да" : "❌ Нет"}\n`;
+    text += `Тел: ${o.phone} | Сумма: ${o.total_price} | Способ: ${o.payment_method}\n`;
+    text += `Статус: ${o.status} | Подтверждён: ${o.is_paid ? "✅ Да" : "❌ Нет"}\n`;
     text += `Состав:\n${o.items}\n--------------------\n`;
   });
 
@@ -182,7 +188,7 @@ bot.callbackQuery("show_faq", async (ctx) => {
   const faqText = 
     `<b>❓ ЧАСТО ЗАДАВАЕМЫЕ ВОПРОСЫ</b>\n\n` +
     `<b>🚚 Доставка:</b> Доставка осуществляется от 2 до 5 дней.\n\n` +
-    `<b>💳 Оплата:</b> Онлайн картой в Telegram или при получении.\n\n` +
+    `<b>💳 Оплата:</b> Через Банк Эсхата или при получении.\n\n` +
     `<b>🔄 Возврат:</b> В течение 14 дней.`;
 
   const keyboard = new InlineKeyboard()
@@ -314,7 +320,11 @@ bot.callbackQuery(/^add_(\d+)_(.+)$/, async (ctx) => {
     chosenSize: selectedSize !== "nosize" ? selectedSize : "Единый"
   });
 
-  await ctx.reply(`✅ <b>${product.name}</b> добавлен в корзину!`, { parse_mode: "HTML" });
+  const keyboard = new InlineKeyboard()
+    .text("🛍 Продолжить", "open_catalog")
+    .text("🛒 В корзину", "view_cart");
+
+  await ctx.reply(`✅ <b>${product.name}</b> добавлен в корзину!`, { parse_mode: "HTML", reply_markup: keyboard });
 });
 
 // 💳 5. КОРЗИНА И ОФОРМЛЕНИЕ ЗАКАЗА
@@ -418,7 +428,65 @@ bot.callbackQuery(/^set_cat_(shoes|clothes|books|toys)$/, async (ctx) => {
   await ctx.reply("Шаг 4/7: Введите бренд товара:");
 });
 
-// 🛠 6. ОБРАБОТКА ВСЕХ ВВОДОВ (СООБЩЕНИЯ)
+// 💳 ВЫБОР СПОСОБА ОПЛАТЫ
+bot.callbackQuery(/^pay_(eshata|cash)$/, async (ctx) => {
+  const paymentMethod = ctx.match[1];
+  const session = getSession(ctx.from.id);
+  session.paymentMethod = paymentMethod;
+
+  let total = 0;
+  session.cart.forEach((i) => (total += i.price));
+
+  if (paymentMethod === "eshata") {
+    session.step = "waiting_receipt";
+    const text = 
+      `💳 <b>ОПЛАТА ЧЕРЕЗ БАНК ЭСХАТА</b>\n\n` +
+      `Пожалуйста, переведите <b>${total} руб.</b> на кошелёк/карту:\n` +
+      `📱 <b>Номер:</b> <code>${ESHATA_WALLET}</code>\n` +
+      `👤 <b>Получатель:</b> ${ESHATA_CARD_NAME}\n\n` +
+      `📸 <b>После оплаты отправьте скриншот чека в этот чат!</b>`;
+
+    await ctx.editMessageText(text, { parse_mode: "HTML" });
+  } else {
+    await createOrderInDb(ctx.from.id, ctx, "💵 Наличными при получении", null);
+  }
+});
+
+// ФУНКЦИЯ СОЗДАНИЯ ЗАКАЗА
+async function createOrderInDb(userId, ctx, paymentLabel, receiptPhoto) {
+  const session = getSession(userId);
+  const cart = session.cart || [];
+  const username = ctx.from.username ? `@${ctx.from.username}` : "Без username";
+
+  let total = 0;
+  let orderDetails = "";
+
+  cart.forEach((item, i) => {
+    orderDetails += `${i + 1}. ${item.name} (Размер: ${item.chosenSize}) — ${item.price} руб.\n`;
+    total += item.price;
+  });
+
+  const result = await db.run(
+    `INSERT INTO orders (user_id, username, phone, address, items, total_price, payment_method, receipt_photo, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'new')`,
+    [userId, username, session.phone, session.address, orderDetails, total, paymentLabel, receiptPhoto]
+  );
+
+  const orderId = result.lastID;
+  session.step = "idle";
+  session.cart = [];
+
+  await notifyAdminAboutOrder(orderId, userId, username, session.phone, session.address, orderDetails, total, paymentLabel, receiptPhoto);
+
+  const userReply = `🎉 <b>Заказ №${orderId} успешно оформлен!</b>\nСпособ оплаты: <b>${paymentLabel}</b>\n\nМенеджер свяжется с вами для подтверждения.`;
+  
+  if (ctx.callbackQuery) {
+    await ctx.editMessageText(userReply, { parse_mode: "HTML" });
+  } else {
+    await ctx.reply(userReply, { parse_mode: "HTML" });
+  }
+}
+
+// 🛠 6. ОБРАБОТКА ВСЕХ ВВОДОВ (СООБЩЕНИЯ И ФОТО)
 bot.on("message", async (ctx) => {
   if (ctx.message.text && ctx.message.text.startsWith("/")) return;
 
@@ -494,33 +562,28 @@ bot.on("message", async (ctx) => {
     return ctx.reply(`🎉 Товар "${session.newProduct.name}" успешно добавлен в базу!`);
   }
 
-  // ОФОРМЛЕНИЕ ЗАКАЗА
+  // ОФОРМЛЕНИЕ ЗАКАЗА: АДРЕС И ВЫБОР ОПЛАТЫ
   if (session.step === "waiting_address") {
     session.address = ctx.message.text;
     session.step = "idle";
 
-    const cart = session.cart || [];
-    const username = ctx.from.username ? `@${ctx.from.username}` : "Без username";
+    const keyboard = new InlineKeyboard()
+      .text("💳 Карта / Кошелёк Эсхата", "pay_eshata")
+      .row()
+      .text("💵 Наличными при получении", "pay_cash");
 
-    let total = 0;
-    let orderDetails = "";
+    await ctx.reply("Выберите способ оплаты:", { reply_markup: keyboard });
+    return;
+  }
 
-    cart.forEach((item, i) => {
-      orderDetails += `${i + 1}. ${item.name} (Размер: ${item.chosenSize}) — ${item.price} руб.\n`;
-      total += item.price;
-    });
+  // ПОЛУЧЕНИЕ ЧЕКА ОБ ОПЛАТЕ ЧЕРЕЗ ЭСХАТА
+  if (session.step === "waiting_receipt") {
+    if (!ctx.message.photo) {
+      return ctx.reply("❌ Пожалуйста, отправьте именно фото/скриншот чека из приложения Эсхата!");
+    }
 
-    const result = await db.run(
-      `INSERT INTO orders (user_id, username, phone, address, items, total_price, status) VALUES (?, ?, ?, ?, ?, ?, 'new')`,
-      [userId, username, session.phone, session.address, orderDetails, total]
-    );
-
-    const orderId = result.lastID;
-
-    await notifyAdminAboutOrder(orderId, userId, username, session.phone, session.address, orderDetails, total, false);
-    await ctx.reply(`🎉 <b>Заказ №${orderId} успешно оформлен!</b>\nМенеджер свяжется с вами.`, { parse_mode: "HTML" });
-
-    session.cart = [];
+    const photoId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
+    await createOrderInDb(userId, ctx, "💳 Банк Эсхата (Предоплата)", photoId);
   }
 });
 
@@ -546,7 +609,8 @@ bot.callbackQuery("clear_cart", async (ctx) => {
   await ctx.editMessageText("🗑 Корзина очищена.");
 });
 
-async function notifyAdminAboutOrder(orderId, userId, username, phone, address, items, total, isPaid) {
+// УВЕДОМЛЕНИЕ АДМИНА О НОВОМ ЗАКАЗЕ
+async function notifyAdminAboutOrder(orderId, userId, username, phone, address, items, total, paymentMethod, receiptPhoto) {
   const adminKeyboard = new InlineKeyboard()
     .text("📦 В работу", `status_proc_${orderId}_${userId}`)
     .text("🚚 В доставку", `status_ship_${orderId}_${userId}`)
@@ -557,13 +621,24 @@ async function notifyAdminAboutOrder(orderId, userId, username, phone, address, 
   let adminMessage = `🚨 <b>НОВЫЙ ЗАКАЗ №${orderId}!</b>\n\n`;
   adminMessage += `👤 <b>Покупатель:</b> ${username} (ID: <code>${userId}</code>)\n`;
   adminMessage += `📞 <b>Телефон:</b> <code>${phone}</code>\n`;
-  adminMessage += `🏠 <b>Адрес:</b> ${address}\n\n`;
+  adminMessage += `🏠 <b>Адрес:</b> ${address}\n`;
+  adminMessage += `💳 <b>Оплата:</b> ${paymentMethod}\n\n`;
   adminMessage += `📦 <b>Состав:</b>\n${items}\n`;
   adminMessage += `💰 <b>ИТОГО:</b> ${total} руб.\n`;
 
   try {
-    await bot.api.sendMessage(ADMIN_CHAT_ID, adminMessage, { parse_mode: "HTML", reply_markup: adminKeyboard });
-  } catch (e) {}
+    if (receiptPhoto) {
+      await bot.api.sendPhoto(ADMIN_CHAT_ID, receiptPhoto, {
+        caption: adminMessage + "\n🧾 <b>Чек оплаты прикреплён выше!</b>",
+        parse_mode: "HTML",
+        reply_markup: adminKeyboard
+      });
+    } else {
+      await bot.api.sendMessage(ADMIN_CHAT_ID, adminMessage, { parse_mode: "HTML", reply_markup: adminKeyboard });
+    }
+  } catch (e) {
+    console.error("Ошибка при отправке заказа админу:", e);
+  }
 }
 
 bot.catch((err) => console.error("Ошибка:", err));
@@ -572,7 +647,6 @@ bot.catch((err) => console.error("Ошибка:", err));
 async function startApp() {
   await initDb();
   
-  // Сервер для обхода ошибки Port scan timeout на Render
   http.createServer((req, res) => {
     res.writeHead(200, { "Content-Type": "text/plain" });
     res.end("Bot is running!");
@@ -581,7 +655,7 @@ async function startApp() {
   });
 
   bot.start();
-  console.log("🚀 Интернет-магазин 2.0 успешно запущен!");
+  console.log("🚀 Интернет-магазин 2.0 с оплатой Эсхата запущен!");
 }
 
-startApp();  
+startApp();
