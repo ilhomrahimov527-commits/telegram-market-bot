@@ -69,23 +69,14 @@ async function seedInitialProducts() {
     { name: "Кроссовки Nike Air Max Blossom", target: "women", category: "shoes", brand: "Nike", price: 8490, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "36,37,38,39" },
     { name: "Футболка Nike Sportswear Tee Black", target: "men", category: "clothes", brand: "Nike", price: 2990, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "S,M,L,XL" },
     { name: "Футболка Oversize Adidas Originals", target: "women", category: "clothes", brand: "Adidas", price: 3490, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "XS,S,M,L" },
-    { name: "Худи Puma Essentials Fleece", target: "men", category: "clothes", brand: "Puma", price: 5490, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "M,L,XL,XXL" },
 
-    // Детское: Обувь и Одежда
+    // Детские товары
     { name: "Детские кроссовки Nike Dynamo GO", target: "kids", category: "kids_shoes", brand: "Nike Kids", price: 4200, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "28,29,30,31,32" },
-    { name: "Кеды детские Adidas Grand Court", target: "kids", category: "kids_shoes", brand: "Adidas Kids", price: 3800, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "30,31,32,33,34" },
-    { name: "Детский костюм H&M Cotton Set", target: "kids", category: "kids_clothes", brand: "H&M", price: 2500, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "110,116,122,128" },
-    { name: "Куртка детская Zara Light Puffer", target: "kids", category: "kids_clothes", brand: "Zara", price: 4500, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "122,128,134,140" },
-
-    // Книги, Игрушки, Еда, Моющие средства
+    { name: "Детский костюм H&M Cotton Set", target: "kids", category: "kids_clothes", brand: "H&M", price: 2500, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "110,116,122" },
     { name: "Гарри Поттер и Философский камень", target: "kids", category: "books", brand: "Эксмо", price: 1200, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "nosize" },
-    { name: "Маленький принц (Антуан де Сент-Экзюпери)", target: "kids", category: "books", brand: "АСТ", price: 850, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "nosize" },
     { name: "Конструктор LEGO City Грузовик", target: "kids", category: "toys", brand: "LEGO", price: 3200, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "nosize" },
-    { name: "Набор детского пластилина Play-Doh", target: "kids", category: "toys", brand: "Hasbro", price: 1400, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "nosize" },
-    { name: "Набор шоколадных конфет Ferrero Rocher", target: "kids", category: "food", brand: "Ferrero", price: 950, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "nosize" },
-    { name: "Детский органический сок HiPP 500мл", target: "kids", category: "food", brand: "HiPP", price: 320, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "nosize" },
-    { name: "Детский гель для купания Mustela 500мл", target: "kids", category: "cleaning", brand: "Mustela", price: 1650, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "nosize" },
-    { name: "Гипоаллергенный детский стиральный порошок", target: "kids", category: "cleaning", brand: "Eared Nanny", price: 890, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "nosize" }
+    { name: "Набор шоколадных конфет Ferrero", target: "kids", category: "food", brand: "Ferrero", price: 950, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "nosize" },
+    { name: "Детский гель Mustela 500мл", target: "kids", category: "cleaning", brand: "Mustela", price: 1650, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "nosize" }
   ];
 
   for (const p of initialProducts) {
@@ -169,7 +160,7 @@ bot.callbackQuery("my_orders", async (ctx) => {
 
   let text = "<b>📜 ВАШИ ПОСЛЕДНИЕ ЗАКАЗЫ:</b>\n\n";
   orders.forEach((o) => {
-    text += `📦 <b>Заказ №${o.id}</b> | ${o.total_price} сомони/руб.\n`;
+    text += `📦 <b>Заказ №${o.id}</b> | ${o.total_price} руб.\n`;
     text += `Оплата: ${o.payment_method === 'eshata' ? '💳 Эсхата Онлайн' : '💵 Наличные'}\n`;
     text += `Статус: ${o.status} | Дата: ${o.created_at}\n`;
     text += `Состав:\n${o.items}\n--------------------\n`;
@@ -201,7 +192,7 @@ bot.callbackQuery("admin_orders", async (ctx) => {
   await ctx.editMessageText(text, { parse_mode: "HTML", reply_markup: keyboard });
 });
 
-// ❓ 2. РАЗДЕЛ FAQ И СВЯЗЬ С МЕНЕДЖЕРОМ
+// ❓ FAQ И СВЯЗЬ С МЕНЕДЖЕРОМ
 bot.callbackQuery("show_faq", async (ctx) => {
   const faqText = 
     `<b>❓ ЧАСТО ЗАДАВАЕМЫЕ ВОПРОСЫ</b>\n\n` +
@@ -220,7 +211,6 @@ bot.callbackQuery("show_faq", async (ctx) => {
 bot.callbackQuery("ask_manager", async (ctx) => {
   const session = getSession(ctx.from.id);
   session.step = "waiting_question";
-
   await ctx.reply("💬 <b>Напишите ваш вопрос для менеджера.</b>\nМы ответим вам прямо в этом чате!", { parse_mode: "HTML" });
 });
 
@@ -242,7 +232,7 @@ bot.callbackQuery("back_to_main", async (ctx) => {
   await ctx.editMessageText("<b>Главное меню:</b>", { parse_mode: "HTML", reply_markup: keyboard });
 });
 
-// 🎯 3. КАТАЛОГ И ТОВАРЫ
+// 🎯 КАТАЛОГ
 bot.callbackQuery("open_catalog", async (ctx) => {
   const keyboard = new InlineKeyboard()
     .text("👨 Я Мужчина", "gender_m")
@@ -286,45 +276,72 @@ bot.callbackQuery(/^target_(men|women|kids)$/, async (ctx) => {
   await ctx.editMessageText("<b>Выберите категорию:</b>", { parse_mode: "HTML", reply_markup: keyboard });
 });
 
-bot.callbackQuery(/^cat_(shoes|clothes|kids_shoes|kids_clothes|books|toys|food|cleaning)$/, async (ctx) => {
+// 📦 ПОСТРАНИЧНЫЙ ВЫВОД КАТАЛОГА (ПАГИНАЦИЯ)
+bot.callbackQuery(/^cat_([a_z_]+)$/, async (ctx) => {
   const category = ctx.match[1];
+  const session = getSession(ctx.from.id);
+  session.currentCategory = category;
+  await showProductPage(ctx, category, 0);
+});
+
+bot.callbackQuery(/^page_([a_z_]+)_(\d+)$/, async (ctx) => {
+  const category = ctx.match[1];
+  const pageIndex = parseInt(ctx.match[2]);
+  await showProductPage(ctx, category, pageIndex);
+});
+
+async function showProductPage(ctx, category, pageIndex) {
   const session = getSession(ctx.from.id);
   const target = session.currentTarget || "men";
 
-  let query = "SELECT * FROM products WHERE category = ?";
-  let params = [category];
+  let query = "SELECT * FROM products WHERE category = ? AND target = ?";
+  let params = [category, target];
 
-  if (target !== "kids" && (category === "shoes" || category === "clothes")) {
-    query += " AND (target = ? OR target = 'kids')";
-    params.push(target);
+  const products = await db.all(query, params);
+
+  if (products.length === 0) {
+    return ctx.answerCallbackQuery({ text: "Товары в этой категории пока отсутствуют!", show_alert: true });
   }
 
-  const filteredProducts = await db.all(query, params);
+  if (pageIndex < 0 || pageIndex >= products.length) pageIndex = 0;
+  const item = products[pageIndex];
 
-  if (filteredProducts.length === 0) {
-    return ctx.answerCallbackQuery({ text: "Товары скоро появятся!", show_alert: true });
+  const keyboard = new InlineKeyboard();
+
+  if (item.sizes && item.sizes !== "nosize") {
+    keyboard.text("📏 Выбрать размер", `select_size_${item.id}`);
+  } else {
+    keyboard.text(`🛒 В корзину (${item.price} руб.)`, `add_${item.id}_nosize`);
   }
+  keyboard.row();
 
-  await ctx.reply(`<b>📦 Каталог товаров (${filteredProducts.length}):</b>`, { parse_mode: "HTML" });
+  // Навигация по страницам
+  const prevPage = pageIndex - 1;
+  const nextPage = pageIndex + 1;
 
-  for (const item of filteredProducts) {
-    const keyboard = new InlineKeyboard();
+  if (prevPage >= 0) keyboard.text("⬅️ Назад", `page_${category}_${prevPage}`);
+  keyboard.text(`${pageIndex + 1} / ${products.length}`, "ignore");
+  if (nextPage < products.length) keyboard.text("Вперед ➡️", `page_${category}_${nextPage}`);
 
-    if (item.sizes && item.sizes !== "nosize") {
-      keyboard.text("📏 Выбрать размер", `select_size_${item.id}`);
-    } else {
-      keyboard.text(`🛒 В корзину (${item.price} руб.)`, `add_${item.id}_nosize`);
-    }
+  const caption = `<b>${item.name}</b>\nБренд: ${item.brand}\n\n💰 <b>Цена:</b> ${item.price} руб.`;
 
+  try {
     await ctx.replyWithPhoto(item.image, {
-      caption: `<b>${item.name}</b>\nБренд: ${item.brand}\n\n💰 <b>Цена:</b> ${item.price} руб.`,
+      caption: caption,
+      parse_mode: "HTML",
+      reply_markup: keyboard
+    });
+  } catch (e) {
+    await ctx.reply(`${caption}\n\n[Картинка недоступна]`, {
       parse_mode: "HTML",
       reply_markup: keyboard
     });
   }
-});
+}
 
-// 📏 4. ДОБАВЛЕНИЕ В КОРЗИНУ И РАЗМЕРЫ
+bot.callbackQuery("ignore", (ctx) => ctx.answerCallbackQuery());
+
+// 📏 ДОБАВЛЕНИЕ В КОРЗИНУ
 bot.callbackQuery(/^select_size_(\d+)$/, async (ctx) => {
   const productId = parseInt(ctx.match[1]);
   const product = await db.get("SELECT * FROM products WHERE id = ?", [productId]);
@@ -345,46 +362,98 @@ bot.callbackQuery(/^add_(\d+)_(.+)$/, async (ctx) => {
   const selectedSize = ctx.match[2];
   const product = await db.get("SELECT * FROM products WHERE id = ?", [productId]);
   const session = getSession(ctx.from.id);
-  
-  session.cart.push({
-    ...product,
-    chosenSize: selectedSize !== "nosize" ? selectedSize : "Единый"
-  });
 
-  const keyboard = new InlineKeyboard()
-    .text("🛍 Продолжить", "open_catalog")
-    .text("🛒 В корзину", "view_cart");
+  const existingItem = session.cart.find(i => i.id === product.id && i.chosenSize === (selectedSize !== "nosize" ? selectedSize : "Единый"));
 
-  await ctx.reply(`✅ <b>${product.name}</b> добавлен в корзину!`, { parse_mode: "HTML", reply_markup: keyboard });
+  if (existingItem) {
+    existingItem.quantity += 1;
+  } else {
+    session.cart.push({
+      ...product,
+      chosenSize: selectedSize !== "nosize" ? selectedSize : "Единый",
+      quantity: 1
+    });
+  }
+
+  await ctx.answerCallbackQuery({ text: `✅ ${product.name} добавлен в корзину!` });
 });
 
-// 💳 5. КОРЗИНА И ОФОРМЛЕНИЕ ЗАКАЗА
+// 🛒 КОРЗИНА И ИЗМЕНЕНИЕ КОЛИЧЕСТВА
 bot.callbackQuery("view_cart", async (ctx) => {
+  await renderCart(ctx);
+});
+
+async function renderCart(ctx) {
   const session = getSession(ctx.from.id);
   const cart = session.cart || [];
 
   if (cart.length === 0) {
-    return ctx.answerCallbackQuery({ text: "Ваша корзина пуста!", show_alert: true });
+    const emptyKb = new InlineKeyboard().text("🛍 В каталог", "open_catalog");
+    if (ctx.callbackQuery) {
+      return ctx.editMessageText("<b>Ваша корзина пуста!</b>", { parse_mode: "HTML", reply_markup: emptyKb });
+    }
+    return ctx.reply("<b>Ваша корзина пуста!</b>", { parse_mode: "HTML", reply_markup: emptyKb });
   }
 
   let total = 0;
   let text = "<b>🛒 ВАША КОРЗИНА:</b>\n\n";
+  const keyboard = new InlineKeyboard();
 
-  cart.forEach((item, i) => {
-    text += `${i + 1}. <b>${item.name}</b>\n  Размер: ${item.chosenSize} | Цена: ${item.price} руб.\n\n`;
-    total += item.price;
+  cart.forEach((item, index) => {
+    const itemTotal = item.price * item.quantity;
+    total += itemTotal;
+    text += `${index + 1}. <b>${item.name}</b> (${item.chosenSize})\n`;
+    text += `   ${item.quantity} шт. x ${item.price} = <b>${itemTotal} руб.</b>\n\n`;
+
+    keyboard.text(`➖`, `cart_dec_${index}`).text(`${item.quantity} шт`, "ignore").text(`➕`, `cart_inc_${index}`).text(`❌`, `cart_del_${index}`).row();
   });
 
   text += `💳 <b>Итого к оплате:</b> ${total} руб.`;
 
-  const keyboard = new InlineKeyboard()
+  keyboard
     .text("✅ Оформить заказ", "start_checkout")
     .row()
-    .text("🗑 Очистить корзину", "clear_cart");
+    .text("🗑 Очистить корзину", "clear_cart")
+    .text("⬅️ В главное меню", "back_to_main");
 
-  await ctx.reply(text, { parse_mode: "HTML", reply_markup: keyboard });
+  if (ctx.callbackQuery) {
+    await ctx.reply(text, { parse_mode: "HTML", reply_markup: keyboard });
+  } else {
+    await ctx.reply(text, { parse_mode: "HTML", reply_markup: keyboard });
+  }
+}
+
+bot.callbackQuery(/^cart_inc_(\d+)$/, async (ctx) => {
+  const idx = parseInt(ctx.match[1]);
+  const session = getSession(ctx.from.id);
+  if (session.cart[idx]) session.cart[idx].quantity += 1;
+  await renderCart(ctx);
 });
 
+bot.callbackQuery(/^cart_dec_(\d+)$/, async (ctx) => {
+  const idx = parseInt(ctx.match[1]);
+  const session = getSession(ctx.from.id);
+  if (session.cart[idx]) {
+    session.cart[idx].quantity -= 1;
+    if (session.cart[idx].quantity <= 0) session.cart.splice(idx, 1);
+  }
+  await renderCart(ctx);
+});
+
+bot.callbackQuery(/^cart_del_(\d+)$/, async (ctx) => {
+  const idx = parseInt(ctx.match[1]);
+  const session = getSession(ctx.from.id);
+  if (session.cart[idx]) session.cart.splice(idx, 1);
+  await renderCart(ctx);
+});
+
+bot.callbackQuery("clear_cart", async (ctx) => {
+  getSession(ctx.from.id).cart = [];
+  await ctx.answerCallbackQuery({ text: "Корзина очищена!" });
+  await renderCart(ctx);
+});
+
+// 💳 ОФОРМЛЕНИЕ ЗАКАЗА
 bot.callbackQuery("start_checkout", async (ctx) => {
   const session = getSession(ctx.from.id);
   if (!session.cart || session.cart.length === 0) return;
@@ -422,9 +491,7 @@ bot.callbackQuery("start_del_product", async (ctx) => {
   if (ctx.from.id.toString() !== ADMIN_CHAT_ID.toString()) return;
   const allProducts = await db.all("SELECT * FROM products ORDER BY id DESC");
   
-  if (allProducts.length === 0) {
-    return ctx.reply("В базе пока нет товаров.");
-  }
+  if (allProducts.length === 0) return ctx.reply("В базе пока нет товаров.");
 
   for (const item of allProducts) {
     const keyboard = new InlineKeyboard().text(`❌ Удалить (${item.name})`, `del_prod_${item.id}`);
@@ -456,21 +523,21 @@ bot.callbackQuery(/^set_target_(men|women|kids)$/, async (ctx) => {
   await ctx.editMessageText("Шаг 3/7: Выберите категорию:", { reply_markup: kb });
 });
 
-bot.callbackQuery(/^set_cat_(shoes|clothes|kids_shoes|kids_clothes|books|toys|food|cleaning)$/, async (ctx) => {
+bot.callbackQuery(/^set_cat_([a_z_]+)$/, async (ctx) => {
   const session = getSession(ctx.from.id);
   session.newProduct.category = ctx.match[1];
   session.step = "add_prod_brand";
   await ctx.reply("Шаг 4/7: Введите бренд товара:");
 });
 
-// 💳 ВЫБОР СПОСОБА ОПЛАТЫ
+// 💳 ОПЛАТА
 bot.callbackQuery(/^pay_(eshata|cash)$/, async (ctx) => {
   const paymentMethod = ctx.match[1];
   const session = getSession(ctx.from.id);
   session.paymentMethod = paymentMethod;
 
   let total = 0;
-  session.cart.forEach((i) => (total += i.price));
+  session.cart.forEach((i) => (total += i.price * i.quantity));
 
   if (paymentMethod === "eshata") {
     session.step = "waiting_receipt";
@@ -487,7 +554,6 @@ bot.callbackQuery(/^pay_(eshata|cash)$/, async (ctx) => {
   }
 });
 
-// ФУНКЦИЯ СОЗДАНИЯ ЗАКАЗА
 async function createOrderInDb(userId, ctx, paymentLabel, receiptPhoto) {
   const session = getSession(userId);
   const cart = session.cart || [];
@@ -497,8 +563,9 @@ async function createOrderInDb(userId, ctx, paymentLabel, receiptPhoto) {
   let orderDetails = "";
 
   cart.forEach((item, i) => {
-    orderDetails += `${i + 1}. ${item.name} (Размер: ${item.chosenSize}) — ${item.price} руб.\n`;
-    total += item.price;
+    const sum = item.price * item.quantity;
+    orderDetails += `${i + 1}. ${item.name} (${item.chosenSize}) x${item.quantity} — ${sum} руб.\n`;
+    total += sum;
   });
 
   const result = await db.run(
@@ -521,7 +588,7 @@ async function createOrderInDb(userId, ctx, paymentLabel, receiptPhoto) {
   }
 }
 
-// 🛠 6. ОБРАБОТКА ВСЕХ ВВОДОВ (СООБЩЕНИЯ И ФОТО)
+// 🛠 ОБРАБОТКА ВВОДА И ВАЛИДАЦИЯ
 bot.on("message", async (ctx) => {
   if (ctx.message.text && ctx.message.text.startsWith("/")) return;
 
@@ -556,7 +623,7 @@ bot.on("message", async (ctx) => {
     }
   }
 
-  // АДМИН: ПОШАГОВОЕ ДОБАВЛЕНИЕ
+  // АДМИН: ПОШАГОВОЕ ДОБАВЛЕНИЕ С ВАЛИДАЦИЕЙ
   if (session.step === "add_prod_name") {
     session.newProduct.name = ctx.message.text;
     session.step = "idle";
@@ -567,12 +634,14 @@ bot.on("message", async (ctx) => {
   if (session.step === "add_prod_brand") {
     session.newProduct.brand = ctx.message.text;
     session.step = "add_prod_price";
-    return ctx.reply("Шаг 5/7: Введите цену (только число):");
+    return ctx.reply("Шаг 5/7: Введите цену (только положительное число):");
   }
 
   if (session.step === "add_prod_price") {
     const price = parseInt(ctx.message.text);
-    if (isNaN(price)) return ctx.reply("❌ Введите число!");
+    if (isNaN(price) || price <= 0) {
+      return ctx.reply("❌ Неверная цена! Пожалуйста, введите положительное число:");
+    }
     session.newProduct.price = price;
     session.step = "add_prod_sizes";
     return ctx.reply("Шаг 6/7: Введите размеры через запятую (например 40,41,42) или nosize:");
@@ -581,11 +650,16 @@ bot.on("message", async (ctx) => {
   if (session.step === "add_prod_sizes") {
     session.newProduct.sizes = ctx.message.text.trim();
     session.step = "add_prod_image";
-    return ctx.reply("Шаг 7/7: Отправьте ссылку на картинку товара:");
+    return ctx.reply("Шаг 7/7: Отправьте ссылку на картинку (http...) или фото:");
   }
 
   if (session.step === "add_prod_image") {
     let imageUrl = ctx.message.photo ? ctx.message.photo[ctx.message.photo.length - 1].file_id : ctx.message.text;
+
+    if (!ctx.message.photo && (!imageUrl.startsWith("http://") && !imageUrl.startsWith("https://"))) {
+      return ctx.reply("❌ Пожалуйста, отправьте корректную ссылку на изображение (начинающуюся с http:// или https://) или фото!");
+    }
+
     session.newProduct.image = imageUrl;
 
     await db.run(
@@ -597,7 +671,7 @@ bot.on("message", async (ctx) => {
     return ctx.reply(`🎉 Товар "${session.newProduct.name}" успешно добавлен в базу!`);
   }
 
-  // ОФОРМЛЕНИЕ ЗАКАЗА: АДРЕС И ВЫБОР ОПЛАТЫ
+  // АДРЕС И ЧЕК
   if (session.step === "waiting_address") {
     session.address = ctx.message.text;
     session.step = "idle";
@@ -611,7 +685,6 @@ bot.on("message", async (ctx) => {
     return;
   }
 
-  // ПОЛУЧЕНИЕ ЧЕКА ОБ ОПЛАТЕ ЧЕРЕЗ ЭСХАТА
   if (session.step === "waiting_receipt") {
     if (!ctx.message.photo) {
       return ctx.reply("❌ Пожалуйста, отправьте именно фото/скриншот чека из приложения Эсхата!");
@@ -637,11 +710,6 @@ bot.callbackQuery(/^status_(proc|ship|done|canc)_(\d+)_(\d+)$/, async (ctx) => {
   const statusMap = { proc: "⚙️ В обработке", ship: "🚚 В доставке", done: "✅ Выполнен", canc: "❌ Отменен" };
   await db.run("UPDATE orders SET status = ? WHERE id = ?", [statusMap[ctx.match[1]], ctx.match[2]]);
   await ctx.answerCallbackQuery({ text: `Статус изменен: ${statusMap[ctx.match[1]]}` });
-});
-
-bot.callbackQuery("clear_cart", async (ctx) => {
-  getSession(ctx.from.id).cart = [];
-  await ctx.editMessageText("🗑 Корзина очищена.");
 });
 
 // УВЕДОМЛЕНИЕ АДМИНА О НОВОМ ЗАКАЗЕ
@@ -690,7 +758,7 @@ async function startApp() {
   });
 
   bot.start();
-  console.log("🚀 Интернет-магазин 2.0 с оплатой Эсхата запущен!");
+  console.log("🚀 Интернет-магазин 2.0 запущен!");
 }
 
 startApp();
