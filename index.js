@@ -10,8 +10,8 @@ const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || "8491952252";
 const PORT = process.env.PORT || 3000;
 
 // 💳 РЕКВИЗИТЫ ДЛЯ ОПЛАТЫ (Банк Эсхата)
-const ESHATA_WALLET = process.env.ESHATA_WALLET || "+992035822424"; // Номер кошелька/карты
-const ESHATA_CARD_NAME = process.env.ESHATA_CARD_NAME || "Azam Р."; // Имя получателя
+const ESHATA_WALLET = process.env.ESHATA_WALLET || "+992035822424";
+const ESHATA_CARD_NAME = process.env.ESHATA_CARD_NAME || "Azam Р.";
 
 const bot = new Bot(BOT_TOKEN);
 let db;
@@ -63,11 +63,29 @@ async function initDb() {
 
 async function seedInitialProducts() {
   const initialProducts = [
+    // Мужское / Женское: Обувь и Одежда
     { name: "Кроссовки Nike Air Force 1 '07", target: "men", category: "shoes", brand: "Nike", price: 8990, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "40,41,42,43,44" },
     { name: "Кроссовки Adidas Ultraboost Light", target: "men", category: "shoes", brand: "Adidas", price: 11490, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "41,42,43,45" },
     { name: "Кроссовки Nike Air Max Blossom", target: "women", category: "shoes", brand: "Nike", price: 8490, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "36,37,38,39" },
     { name: "Футболка Nike Sportswear Tee Black", target: "men", category: "clothes", brand: "Nike", price: 2990, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "S,M,L,XL" },
-    { name: "Книга Гарри Поттер и Философский камень", target: "kids", category: "books", brand: "Книги", price: 1200, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "nosize" }
+    { name: "Футболка Oversize Adidas Originals", target: "women", category: "clothes", brand: "Adidas", price: 3490, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "XS,S,M,L" },
+    { name: "Худи Puma Essentials Fleece", target: "men", category: "clothes", brand: "Puma", price: 5490, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "M,L,XL,XXL" },
+
+    // Детское: Обувь и Одежда
+    { name: "Детские кроссовки Nike Dynamo GO", target: "kids", category: "kids_shoes", brand: "Nike Kids", price: 4200, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "28,29,30,31,32" },
+    { name: "Кеды детские Adidas Grand Court", target: "kids", category: "kids_shoes", brand: "Adidas Kids", price: 3800, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "30,31,32,33,34" },
+    { name: "Детский костюм H&M Cotton Set", target: "kids", category: "kids_clothes", brand: "H&M", price: 2500, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "110,116,122,128" },
+    { name: "Куртка детская Zara Light Puffer", target: "kids", category: "kids_clothes", brand: "Zara", price: 4500, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "122,128,134,140" },
+
+    // Книги, Игрушки, Еда, Моющие средства
+    { name: "Гарри Поттер и Философский камень", target: "kids", category: "books", brand: "Эксмо", price: 1200, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "nosize" },
+    { name: "Маленький принц (Антуан де Сент-Экзюпери)", target: "kids", category: "books", brand: "АСТ", price: 850, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "nosize" },
+    { name: "Конструктор LEGO City Грузовик", target: "kids", category: "toys", brand: "LEGO", price: 3200, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "nosize" },
+    { name: "Набор детского пластилина Play-Doh", target: "kids", category: "toys", brand: "Hasbro", price: 1400, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "nosize" },
+    { name: "Набор шоколадных конфет Ferrero Rocher", target: "kids", category: "food", brand: "Ferrero", price: 950, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "nosize" },
+    { name: "Детский органический сок HiPP 500мл", target: "kids", category: "food", brand: "HiPP", price: 320, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "nosize" },
+    { name: "Детский гель для купания Mustela 500мл", target: "kids", category: "cleaning", brand: "Mustela", price: 1650, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "nosize" },
+    { name: "Гипоаллергенный детский стиральный порошок", target: "kids", category: "cleaning", brand: "Eared Nanny", price: 890, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "nosize" }
   ];
 
   for (const p of initialProducts) {
@@ -252,23 +270,36 @@ bot.callbackQuery(/^target_(men|women|kids)$/, async (ctx) => {
   const keyboard = new InlineKeyboard();
 
   if (target === "kids") {
-    keyboard.text("📚 Книги", "cat_books").row().text("🧸 Игрушки", "cat_toys");
+    keyboard
+      .text("👟 Детская обувь", "cat_kids_shoes")
+      .text("👕 Детская одежда", "cat_kids_clothes")
+      .row()
+      .text("📚 Книги", "cat_books")
+      .text("🧸 Игрушки", "cat_toys")
+      .row()
+      .text("🍏 Еда и продукты", "cat_food")
+      .text("🧴 Моющие средства", "cat_cleaning");
   } else {
-    keyboard.text("👟 Кроссовки", "cat_shoes").row().text("👕 Футболки", "cat_clothes");
+    keyboard.text("👟 Кроссовки", "cat_shoes").row().text("👕 Футболки и Одежда", "cat_clothes");
   }
 
   await ctx.editMessageText("<b>Выберите категорию:</b>", { parse_mode: "HTML", reply_markup: keyboard });
 });
 
-bot.callbackQuery(/^cat_(shoes|clothes|books|toys)$/, async (ctx) => {
+bot.callbackQuery(/^cat_(shoes|clothes|kids_shoes|kids_clothes|books|toys|food|cleaning)$/, async (ctx) => {
   const category = ctx.match[1];
   const session = getSession(ctx.from.id);
   const target = session.currentTarget || "men";
 
-  const filteredProducts = await db.all(
-    "SELECT * FROM products WHERE category = ? AND (target = ? OR target = 'kids')",
-    [category, target]
-  );
+  let query = "SELECT * FROM products WHERE category = ?";
+  let params = [category];
+
+  if (target !== "kids" && (category === "shoes" || category === "clothes")) {
+    query += " AND (target = ? OR target = 'kids')";
+    params.push(target);
+  }
+
+  const filteredProducts = await db.all(query, params);
 
   if (filteredProducts.length === 0) {
     return ctx.answerCallbackQuery({ text: "Товары скоро появятся!", show_alert: true });
@@ -414,14 +445,18 @@ bot.callbackQuery(/^set_target_(men|women|kids)$/, async (ctx) => {
   
   const kb = new InlineKeyboard();
   if (session.newProduct.target === "kids") {
-    kb.text("📚 Книги", "set_cat_books").row().text("🧸 Игрушки", "set_cat_toys");
+    kb.text("👟 Обувь", "set_cat_kids_shoes").text("👕 Одежда", "set_cat_kids_clothes")
+      .row()
+      .text("📚 Книги", "set_cat_books").text("🧸 Игрушки", "set_cat_toys")
+      .row()
+      .text("🍏 Еда", "set_cat_food").text("🧴 Моющие средства", "set_cat_cleaning");
   } else {
-    kb.text("👟 Кроссовки", "set_cat_shoes").row().text("👕 Футболки", "set_cat_clothes");
+    kb.text("👟 Кроссовки", "set_cat_shoes").row().text("👕 Одежда", "set_cat_clothes");
   }
   await ctx.editMessageText("Шаг 3/7: Выберите категорию:", { reply_markup: kb });
 });
 
-bot.callbackQuery(/^set_cat_(shoes|clothes|books|toys)$/, async (ctx) => {
+bot.callbackQuery(/^set_cat_(shoes|clothes|kids_shoes|kids_clothes|books|toys|food|cleaning)$/, async (ctx) => {
   const session = getSession(ctx.from.id);
   session.newProduct.category = ctx.match[1];
   session.step = "add_prod_brand";
