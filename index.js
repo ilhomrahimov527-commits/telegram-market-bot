@@ -342,19 +342,25 @@ async function showProductPage(ctx, category, pageIndex) {
 bot.callbackQuery("ignore", (ctx) => ctx.answerCallbackQuery());
 
 // 📏 ДОБАВЛЕНИЕ В КОРЗИНУ
-bot.callbackQuery(/^select_size_(\d+)$/, async (ctx) => {
-  const productId = parseInt(ctx.match[1]);
-  const product = await db.get("SELECT * FROM products WHERE id = ?", [productId]);
-  
-  const keyboard = new InlineKeyboard();
-  const sizesList = product.sizes.split(",");
+bot.callbackQuery(/^size_(\d+)_(.+)$/, async (ctx) => {
+  try {
+    // Обязательно сразу убираем анимацию загрузки с кнопки
+    await ctx.answerCallbackQuery(); 
 
-  sizesList.forEach((size, index) => {
-    keyboard.text(`Размер: ${size}`, `add_${product.id}_${size}`);
-    if ((index + 1) % 2 === 0) keyboard.row();
-  });
+    const productId = parseInt(ctx.match[1]);
+    const size = ctx.match[2];
 
-  await ctx.reply(`<b>Выберите размер для:</b> ${product.name}`, { parse_mode: "HTML", reply_markup: keyboard });
+    const session = getSession(ctx.from.id);
+    if (!session.cart) session.cart = [];
+    
+    // Добавляем в корзину
+    session.cart.push({ productId, size });
+
+    await ctx.reply(`✅ Товар успешно добавлен в корзину!\nВыбранный размер: ${size}`);
+  } catch (err) {
+    console.error("Ошибка при выборе размера:", err);
+    await ctx.answerCallbackQuery("Произошла ошибка, попробуйте еще раз").catch(() => {});
+  }
 });
 
 bot.callbackQuery(/^add_(\d+)_(.+)$/, async (ctx) => {
