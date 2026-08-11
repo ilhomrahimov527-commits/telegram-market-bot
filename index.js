@@ -64,19 +64,19 @@ async function initDb() {
 async function seedInitialProducts() {
   const initialProducts = [
     // Мужское / Женское: Обувь и Одежда
-    { name: "Кроссовки Nike Air Force 1 '07", target: "men", category: "shoes", brand: "Nike", price: 8990, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "40,41,42,43,44" },
-    { name: "Кроссовки Adidas Ultraboost Light", target: "men", category: "shoes", brand: "Adidas", price: 11490, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "41,42,43,45" },
-    { name: "Кроссовки Nike Air Max Blossom", target: "women", category: "shoes", brand: "Nike", price: 8490, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "36,37,38,39" },
-    { name: "Футболка Nike Sportswear Tee Black", target: "men", category: "clothes", brand: "Nike", price: 2990, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "S,M,L,XL" },
-    { name: "Футболка Oversize Adidas Originals", target: "women", category: "clothes", brand: "Adidas", price: 3490, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "XS,S,M,L" },
+    { name: "Кроссовки Nike Air Force 1 '07", target: "men", category: "shoes", brand: "Nike", price: 8990, image: "https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?w=600", sizes: "40,41,42,43,44" },
+    { name: "Кроссовки Adidas Ultraboost Light", target: "men", category: "shoes", brand: "Adidas", price: 11490, image: "https://images.unsplash.com/photo-1584735935682-2f2b69dff9d2?w=600", sizes: "41,42,43,45" },
+    { name: "Кроссовки Nike Air Max Blossom", target: "women", category: "shoes", brand: "Nike", price: 8490, image: "https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=600", sizes: "36,37,38,39" },
+    { name: "Футболка Nike Sportswear Tee Black", target: "men", category: "clothes", brand: "Nike", price: 2990, image: "https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=600", sizes: "S,M,L,XL" },
+    { name: "Футболка Oversize Adidas Originals", target: "women", category: "clothes", brand: "Adidas", price: 3490, image: "https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?w=600", sizes: "XS,S,M,L" },
 
     // Детские товары
-    { name: "Детские кроссовки Nike Dynamo GO", target: "kids", category: "kids_shoes", brand: "Nike Kids", price: 4200, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "28,29,30,31,32" },
-    { name: "Детский костюм H&M Cotton Set", target: "kids", category: "kids_clothes", brand: "H&M", price: 2500, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "110,116,122" },
-    { name: "Гарри Поттер и Философский камень", target: "kids", category: "books", brand: "Эксмо", price: 1200, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "nosize" },
-    { name: "Конструктор LEGO City Грузовик", target: "kids", category: "toys", brand: "LEGO", price: 3200, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "nosize" },
-    { name: "Набор шоколадных конфет Ferrero", target: "kids", category: "food", brand: "Ferrero", price: 950, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "nosize" },
-    { name: "Детский гель Mustela 500мл", target: "kids", category: "cleaning", brand: "Mustela", price: 1650, image: "https://i.imgur.com/8Qp5Y6B.jpeg", sizes: "nosize" }
+    { name: "Детские кроссовки Nike Dynamo GO", target: "kids", category: "kids_shoes", brand: "Nike Kids", price: 4200, image: "https://images.unsplash.com/photo-1514989940723-e8e51635b782?w=600", sizes: "28,29,30,31,32" },
+    { name: "Детский костюм H&M Cotton Set", target: "kids", category: "kids_clothes", brand: "H&M", price: 2500, image: "https://images.unsplash.com/photo-1622290291468-a28f7a7dc6a8?w=600", sizes: "110,116,122" },
+    { name: "Гарри Поттер и Философский камень", target: "kids", category: "books", brand: "Эксмо", price: 1200, image: "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=600", sizes: "nosize" },
+    { name: "Конструктор LEGO City Грузовик", target: "kids", category: "toys", brand: "LEGO", price: 3200, image: "https://images.unsplash.com/photo-1587654780291-39c9404d746b?w=600", sizes: "nosize" },
+    { name: "Набор шоколадных конфет Ferrero", target: "kids", category: "food", brand: "Ferrero", price: 950, image: "https://images.unsplash.com/photo-1549007994-cb92caebd54b?w=600", sizes: "nosize" },
+    { name: "Детский гель Mustela 500мл", target: "kids", category: "cleaning", brand: "Mustela", price: 1650, image: "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=600", sizes: "nosize" }
   ];
 
   for (const p of initialProducts) {
