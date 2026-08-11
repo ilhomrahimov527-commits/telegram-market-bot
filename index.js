@@ -278,14 +278,14 @@ bot.callbackQuery(/^target_(men|women|kids)$/, async (ctx) => {
 });
 
 // 📦 ПОСТРАНИЧНЫЙ ВЫВОД КАТАЛОГА (ПАГИНАЦИЯ)
-bot.callbackQuery(/^cat_([a_z_]+)$/, async (ctx) => {
+bot.callbackQuery(/^cat_(.+)$/, async (ctx) => {
   const category = ctx.match[1];
   const session = getSession(ctx.from.id);
   session.currentCategory = category;
   await showProductPage(ctx, category, 0);
 });
 
-bot.callbackQuery(/^page_([a_z_]+)_(\d+)$/, async (ctx) => {
+bot.callbackQuery(/^page_(.+)_(\d+)$/, async (ctx) => {
   const category = ctx.match[1];
   const pageIndex = parseInt(ctx.match[2]);
   await showProductPage(ctx, category, pageIndex);
@@ -523,7 +523,7 @@ bot.callbackQuery(/^set_target_(men|women|kids)$/, async (ctx) => {
   await ctx.editMessageText("Шаг 3/7: Выберите категорию:", { reply_markup: kb });
 });
 
-bot.callbackQuery(/^set_cat_([a_z_]+)$/, async (ctx) => {
+bot.callbackQuery(/^set_cat_(.+)$/, async (ctx) => {
   const session = getSession(ctx.from.id);
   session.newProduct.category = ctx.match[1];
   session.step = "add_prod_brand";
