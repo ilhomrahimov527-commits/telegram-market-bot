@@ -141,7 +141,8 @@ async function showAdminMenu(ctx) {
 
   const text = "👑 <b>Панель администратора:</b>\nВыберите необходимое действие:";
   if (ctx.callbackQuery) {
-    await ctx.editMessageText(text, { parse_mode: "HTML", reply_markup: keyboard });
+    await ctx.reply(text, { parse_mode: "HTML", reply_markup: keyboard });
+    await ctx.answerCallbackQuery();
   } else {
     await ctx.reply(text, { parse_mode: "HTML", reply_markup: keyboard });
   }
@@ -165,7 +166,8 @@ bot.callbackQuery("my_orders", async (ctx) => {
   });
 
   const keyboard = new InlineKeyboard().text("⬅️ Назад", "back_to_main");
-  await ctx.editMessageText(text, { parse_mode: "HTML", reply_markup: keyboard });
+  await ctx.reply(text, { parse_mode: "HTML", reply_markup: keyboard });
+  await ctx.answerCallbackQuery();
 });
 
 // 📜 ИСТОРИЯ ВСЕХ ЗАКАЗОВ ДЛЯ АДМИНА
@@ -187,7 +189,8 @@ bot.callbackQuery("admin_orders", async (ctx) => {
   });
 
   const keyboard = new InlineKeyboard().text("⬅️ В админку", "admin_panel");
-  await ctx.editMessageText(text, { parse_mode: "HTML", reply_markup: keyboard });
+  await ctx.reply(text, { parse_mode: "HTML", reply_markup: keyboard });
+  await ctx.answerCallbackQuery();
 });
 
 // ❓ FAQ И СВЯЗЬ С МЕНЕДЖЕРОМ
@@ -203,13 +206,15 @@ bot.callbackQuery("show_faq", async (ctx) => {
     .row()
     .text("⬅️ Главное меню", "back_to_main");
 
-  await ctx.editMessageText(faqText, { parse_mode: "HTML", reply_markup: keyboard });
+  await ctx.reply(faqText, { parse_mode: "HTML", reply_markup: keyboard });
+  await ctx.answerCallbackQuery();
 });
 
 bot.callbackQuery("ask_manager", async (ctx) => {
   const session = getSession(ctx.from.id);
   session.step = "waiting_question";
   await ctx.reply("💬 <b>Напишите ваш вопрос для менеджера.</b>\nМы ответим вам прямо в этом чате!", { parse_mode: "HTML" });
+  await ctx.answerCallbackQuery();
 });
 
 bot.callbackQuery("back_to_main", async (ctx) => {
@@ -227,7 +232,8 @@ bot.callbackQuery("back_to_main", async (ctx) => {
     keyboard.row().text("👑 Админ-панель", "admin_panel");
   }
 
-  await ctx.editMessageText("<b>Главное меню:</b>", { parse_mode: "HTML", reply_markup: keyboard });
+  await ctx.reply("<b>Главное меню:</b>", { parse_mode: "HTML", reply_markup: keyboard });
+  await ctx.answerCallbackQuery();
 });
 
 // 🎯 КАТАЛОГ
@@ -236,7 +242,8 @@ bot.callbackQuery("open_catalog", async (ctx) => {
     .text("👨 Я Мужчина", "gender_m")
     .text("👩 Я Женщина", "gender_w");
 
-  await ctx.editMessageText("<b>Укажите ваш пол:</b>", { parse_mode: "HTML", reply_markup: keyboard });
+  await ctx.reply("<b>Укажите ваш пол:</b>", { parse_mode: "HTML", reply_markup: keyboard });
+  await ctx.answerCallbackQuery();
 });
 
 bot.callbackQuery(/^gender_(m|w)$/, async (ctx) => {
@@ -247,7 +254,8 @@ bot.callbackQuery(/^gender_(m|w)$/, async (ctx) => {
     .row()
     .text("👶 Для Детей", "target_kids");
 
-  await ctx.editMessageText("<b>Для кого вы хотите подобрать товары?</b>", { parse_mode: "HTML", reply_markup: keyboard });
+  await ctx.reply("<b>Для кого вы хотите подобрать товары?</b>", { parse_mode: "HTML", reply_markup: keyboard });
+  await ctx.answerCallbackQuery();
 });
 
 bot.callbackQuery(/^target_(men|women|kids)$/, async (ctx) => {
@@ -271,7 +279,8 @@ bot.callbackQuery(/^target_(men|women|kids)$/, async (ctx) => {
     keyboard.text("👟 Кроссовки", "cat_shoes").row().text("👕 Футболки и Одежда", "cat_clothes");
   }
 
-  await ctx.editMessageText("<b>Выберите категорию:</b>", { parse_mode: "HTML", reply_markup: keyboard });
+  await ctx.reply("<b>Выберите категорию:</b>", { parse_mode: "HTML", reply_markup: keyboard });
+  await ctx.answerCallbackQuery();
 });
 
 // 📦 ПОСТРАНИЧНЫЙ ВЫВОД КАТАЛОГА (ПАГИНАЦИЯ)
@@ -280,12 +289,14 @@ bot.callbackQuery(/^cat_(.+)$/, async (ctx) => {
   const session = getSession(ctx.from.id);
   session.currentCategory = category;
   await showProductPage(ctx, category, 0);
+  await ctx.answerCallbackQuery();
 });
 
 bot.callbackQuery(/^page_(.+)_(\d+)$/, async (ctx) => {
   const category = ctx.match[1];
   const pageIndex = parseInt(ctx.match[2]);
   await showProductPage(ctx, category, pageIndex);
+  await ctx.answerCallbackQuery();
 });
 
 async function showProductPage(ctx, category, pageIndex) {
@@ -307,7 +318,7 @@ async function showProductPage(ctx, category, pageIndex) {
   const keyboard = new InlineKeyboard();
 
   if (item.sizes && item.sizes !== "nosize") {
-    keyboard.text("📏 Выбрать размер", `select_size_${item.id}`);
+    keyboard.text("📏 Выбрать размер", `show_sizes_${item.id}`);
   } else {
     keyboard.text(`🛒 В корзину (${item.price} руб.)`, `add_${item.id}_nosize`);
   }
@@ -336,58 +347,60 @@ async function showProductPage(ctx, category, pageIndex) {
   }
 }
 
-bot.callbackQuery("ignore", (ctx) => ctx.answerCallbackQuery());
-
-// 📏 ОТОБРАЖЕНИЕ КНОПОК РАЗМЕРОВ
-bot.callbackQuery(/^select_size_(\d+)$/, async (ctx) => {
+// 📏 ПОКАЗ И ВЫБОР РАЗМЕРОВ
+bot.callbackQuery(/^show_sizes_(\d+)$/, async (ctx) => {
   const productId = parseInt(ctx.match[1]);
   const product = await db.get("SELECT * FROM products WHERE id = ?", [productId]);
 
-  if (!product) return ctx.answerCallbackQuery({ text: "Товар не найден!" });
+  if (!product || !product.sizes) {
+    return ctx.answerCallbackQuery({ text: "Размеры недоступны", show_alert: true });
+  }
 
-  const sizes = product.sizes.split(",");
+  const sizesArr = product.sizes.split(",").map((s) => s.trim());
   const keyboard = new InlineKeyboard();
 
-  sizes.forEach((s) => {
-    keyboard.text(s.trim(), `add_${productId}_${s.trim()}`);
+  sizesArr.forEach((sz, idx) => {
+    keyboard.text(`Размер: ${sz}`, `add_${productId}_${sz}`);
+    if ((idx + 1) % 2 === 0) keyboard.row();
   });
 
-  await ctx.reply(`<b>Выберите размер для ${product.name}:</b>`, {
+  await ctx.reply(`Выберите размер для <b>${product.name}</b>:`, {
     parse_mode: "HTML",
     reply_markup: keyboard
   });
   await ctx.answerCallbackQuery();
 });
 
-// 📏 ДОБАВЛЕНИЕ В КОРЗИНУ (УНИФИЦИРОВАННАЯ ЛОГИКА)
+bot.callbackQuery("ignore", (ctx) => ctx.answerCallbackQuery());
+
+// 🛒 ДОБАВЛЕНИЕ В КОРЗИНУ
 bot.callbackQuery(/^add_(\d+)_(.+)$/, async (ctx) => {
   const productId = parseInt(ctx.match[1]);
   const selectedSize = ctx.match[2];
   const product = await db.get("SELECT * FROM products WHERE id = ?", [productId]);
-
-  if (!product) return ctx.answerCallbackQuery({ text: "Ошибка: товар не найден" });
-
   const session = getSession(ctx.from.id);
-  const chosenSize = selectedSize !== "nosize" ? selectedSize : "Единый";
 
-  const existingItem = session.cart.find(i => i.id === product.id && i.chosenSize === chosenSize);
+  const chosenSizeLabel = selectedSize !== "nosize" ? selectedSize : "Единый";
+  const existingItem = session.cart.find(i => i.id === product.id && i.chosenSize === chosenSizeLabel);
 
   if (existingItem) {
     existingItem.quantity += 1;
   } else {
     session.cart.push({
       ...product,
-      chosenSize: chosenSize,
+      chosenSize: chosenSizeLabel,
       quantity: 1
     });
   }
 
-  await ctx.answerCallbackQuery({ text: `✅ ${product.name} (${chosenSize}) добавлен в корзину!` });
+  await ctx.answerCallbackQuery({ text: `✅ ${product.name} (${chosenSizeLabel}) добавлен в корзину!` });
+  await ctx.reply(`✅ <b>${product.name}</b> (${chosenSizeLabel}) успешно добавлен в корзину!`, { parse_mode: "HTML" });
 });
 
 // 🛒 КОРЗИНА И ИЗМЕНЕНИЕ КОЛИЧЕСТВА
 bot.callbackQuery("view_cart", async (ctx) => {
   await renderCart(ctx);
+  if (ctx.callbackQuery) await ctx.answerCallbackQuery();
 });
 
 async function renderCart(ctx) {
@@ -396,9 +409,6 @@ async function renderCart(ctx) {
 
   if (cart.length === 0) {
     const emptyKb = new InlineKeyboard().text("🛍 В каталог", "open_catalog");
-    if (ctx.callbackQuery) {
-      return ctx.editMessageText("<b>Ваша корзина пуста!</b>", { parse_mode: "HTML", reply_markup: emptyKb });
-    }
     return ctx.reply("<b>Ваша корзина пуста!</b>", { parse_mode: "HTML", reply_markup: emptyKb });
   }
 
@@ -421,14 +431,9 @@ async function renderCart(ctx) {
     .text("✅ Оформить заказ", "start_checkout")
     .row()
     .text("🗑 Очистить корзину", "clear_cart")
-    .row()
     .text("⬅️ В главное меню", "back_to_main");
 
-  if (ctx.callbackQuery) {
-    await ctx.reply(text, { parse_mode: "HTML", reply_markup: keyboard });
-  } else {
-    await ctx.reply(text, { parse_mode: "HTML", reply_markup: keyboard });
-  }
+  await ctx.reply(text, { parse_mode: "HTML", reply_markup: keyboard });
 }
 
 bot.callbackQuery(/^cart_inc_(\d+)$/, async (ctx) => {
@@ -436,6 +441,7 @@ bot.callbackQuery(/^cart_inc_(\d+)$/, async (ctx) => {
   const session = getSession(ctx.from.id);
   if (session.cart[idx]) session.cart[idx].quantity += 1;
   await renderCart(ctx);
+  await ctx.answerCallbackQuery();
 });
 
 bot.callbackQuery(/^cart_dec_(\d+)$/, async (ctx) => {
@@ -446,6 +452,7 @@ bot.callbackQuery(/^cart_dec_(\d+)$/, async (ctx) => {
     if (session.cart[idx].quantity <= 0) session.cart.splice(idx, 1);
   }
   await renderCart(ctx);
+  await ctx.answerCallbackQuery();
 });
 
 bot.callbackQuery(/^cart_del_(\d+)$/, async (ctx) => {
@@ -453,6 +460,7 @@ bot.callbackQuery(/^cart_del_(\d+)$/, async (ctx) => {
   const session = getSession(ctx.from.id);
   if (session.cart[idx]) session.cart.splice(idx, 1);
   await renderCart(ctx);
+  await ctx.answerCallbackQuery();
 });
 
 bot.callbackQuery("clear_cart", async (ctx) => {
@@ -465,7 +473,7 @@ bot.callbackQuery("clear_cart", async (ctx) => {
 bot.callbackQuery("start_checkout", async (ctx) => {
   const session = getSession(ctx.from.id);
   if (!session.cart || session.cart.length === 0) {
-    return ctx.answerCallbackQuery({ text: "Корзина пуста!", show_alert: true });
+    return ctx.answerCallbackQuery({ text: "Ваша корзина пуста!", show_alert: true });
   }
 
   session.step = "waiting_phone";
@@ -485,7 +493,9 @@ bot.on(":contact", async (ctx) => {
     session.phone = ctx.message.contact.phone_number;
     session.step = "waiting_address";
 
-    await ctx.reply("Спасибо! Теперь введите ваш адрес доставки:", { reply_markup: { remove_keyboard: true } });
+    await ctx.reply("Спасибо! Теперь введите ваш адрес доставки (город, улица, дом/квартира):", { 
+      reply_markup: { remove_keyboard: true } 
+    });
   }
 });
 
@@ -496,25 +506,30 @@ bot.callbackQuery("start_add_product", async (ctx) => {
   session.step = "add_prod_name";
   session.newProduct = {};
   await ctx.reply("➕ <b>Добавление товара (Шаг 1/7):</b> Введите название товара:", { parse_mode: "HTML" });
+  await ctx.answerCallbackQuery();
 });
 
 bot.callbackQuery("start_del_product", async (ctx) => {
   if (ctx.from.id.toString() !== ADMIN_CHAT_ID.toString()) return;
   const allProducts = await db.all("SELECT * FROM products ORDER BY id DESC");
   
-  if (allProducts.length === 0) return ctx.reply("В базе пока нет товаров.");
+  if (allProducts.length === 0) {
+    await ctx.reply("В базе пока нет товаров.");
+    return ctx.answerCallbackQuery();
+  }
 
   for (const item of allProducts) {
     const keyboard = new InlineKeyboard().text(`❌ Удалить (${item.name})`, `del_prod_${item.id}`);
     await ctx.replyWithPhoto(item.image, { caption: `<b>[ID: ${item.id}] ${item.name}</b>`, parse_mode: "HTML", reply_markup: keyboard });
   }
+  await ctx.answerCallbackQuery();
 });
 
 bot.callbackQuery(/^del_prod_(\d+)$/, async (ctx) => {
   if (ctx.from.id.toString() !== ADMIN_CHAT_ID.toString()) return;
   await db.run("DELETE FROM products WHERE id = ?", [ctx.match[1]]);
   await ctx.answerCallbackQuery({ text: "✅ Удалено!" });
-  await ctx.editMessageCaption({ caption: "❌ <b>ТОВАР УДАЛЕН</b>", parse_mode: "HTML" });
+  await ctx.reply("❌ <b>ТОВАР УДАЛЕН</b>", { parse_mode: "HTML" });
 });
 
 bot.callbackQuery(/^set_target_(men|women|kids)$/, async (ctx) => {
@@ -531,7 +546,8 @@ bot.callbackQuery(/^set_target_(men|women|kids)$/, async (ctx) => {
   } else {
     kb.text("👟 Кроссовки", "set_cat_shoes").row().text("👕 Одежда", "set_cat_clothes");
   }
-  await ctx.editMessageText("Шаг 3/7: Выберите категорию:", { reply_markup: kb });
+  await ctx.reply("Шаг 3/7: Выберите категорию:", { reply_markup: kb });
+  await ctx.answerCallbackQuery();
 });
 
 bot.callbackQuery(/^set_cat_(.+)$/, async (ctx) => {
@@ -539,6 +555,7 @@ bot.callbackQuery(/^set_cat_(.+)$/, async (ctx) => {
   session.newProduct.category = ctx.match[1];
   session.step = "add_prod_brand";
   await ctx.reply("Шаг 4/7: Введите бренд товара:");
+  await ctx.answerCallbackQuery();
 });
 
 // 💳 ОПЛАТА
@@ -559,10 +576,11 @@ bot.callbackQuery(/^pay_(eshata|cash)$/, async (ctx) => {
       `👤 <b>Получатель:</b> ${ESHATA_CARD_NAME}\n\n` +
       `📸 <b>После оплаты отправьте скриншот чека в этот чат!</b>`;
 
-    await ctx.editMessageText(text, { parse_mode: "HTML" });
+    await ctx.reply(text, { parse_mode: "HTML" });
   } else {
     await createOrderInDb(ctx.from.id, ctx, "💵 Наличными при получении", null);
   }
+  await ctx.answerCallbackQuery();
 });
 
 async function createOrderInDb(userId, ctx, paymentLabel, receiptPhoto) {
@@ -591,12 +609,7 @@ async function createOrderInDb(userId, ctx, paymentLabel, receiptPhoto) {
   await notifyAdminAboutOrder(orderId, userId, username, session.phone, session.address, orderDetails, total, paymentLabel, receiptPhoto);
 
   const userReply = `🎉 <b>Заказ №${orderId} успешно оформлен!</b>\nСпособ оплаты: <b>${paymentLabel}</b>\n\nМенеджер свяжется с вами для подтверждения.`;
-  
-  if (ctx.callbackQuery) {
-    await ctx.editMessageText(userReply, { parse_mode: "HTML" });
-  } else {
-    await ctx.reply(userReply, { parse_mode: "HTML" });
-  }
+  await ctx.reply(userReply, { parse_mode: "HTML" });
 }
 
 // 🛠 ОБРАБОТКА ВВОДА И ВАЛИДАЦИЯ
@@ -604,14 +617,7 @@ bot.on("message", async (ctx) => {
   if (ctx.message.text && ctx.message.text.startsWith("/")) return;
 
   const userId = ctx.from.id;
-  session = getSession(userId);
-
-  // ВВОД НОМЕРА ТЕЛЕФОНА ТЕКСТОМ (если пользователь не нажал кнопку)
-  if (session.step === "waiting_phone" && ctx.message.text) {
-    session.phone = ctx.message.text;
-    session.step = "waiting_address";
-    return ctx.reply("Спасибо! Теперь введите ваш адрес доставки:");
-  }
+  const session = getSession(userId);
 
   // ВОПРОС МЕНЕДЖЕРУ
   if (session.step === "waiting_question") {
@@ -721,6 +727,7 @@ bot.callbackQuery(/^reply_user_(\d+)$/, async (ctx) => {
   session.step = `replying_to_${targetUserId}`;
 
   await ctx.reply(`✍️ Введите текст ответа для пользователя (ID: ${targetUserId}):`);
+  await ctx.answerCallbackQuery();
 });
 
 bot.callbackQuery(/^status_(proc|ship|done|canc)_(\d+)_(\d+)$/, async (ctx) => {
