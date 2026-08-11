@@ -140,12 +140,8 @@ async function showAdminMenu(ctx) {
     .text("⬅️ В главное меню", "back_to_main");
 
   const text = "👑 <b>Панель администратора:</b>\nВыберите необходимое действие:";
-  if (ctx.callbackQuery) {
-    await ctx.reply(text, { parse_mode: "HTML", reply_markup: keyboard });
-    await ctx.answerCallbackQuery();
-  } else {
-    await ctx.reply(text, { parse_mode: "HTML", reply_markup: keyboard });
-  }
+  await ctx.reply(text, { parse_mode: "HTML", reply_markup: keyboard });
+  if (ctx.callbackQuery) await ctx.answerCallbackQuery();
 }
 
 // 📜 ИСТОРИЯ ЗАКАЗОВ ДЛЯ ПОЛЬЗОВАТЕЛЯ
@@ -238,15 +234,6 @@ bot.callbackQuery("back_to_main", async (ctx) => {
 
 // 🎯 КАТАЛОГ
 bot.callbackQuery("open_catalog", async (ctx) => {
-  const keyboard = new InlineKeyboard()
-    .text("👨 Я Мужчина", "gender_m")
-    .text("👩 Я Женщина", "gender_w");
-
-  await ctx.reply("<b>Укажите ваш пол:</b>", { parse_mode: "HTML", reply_markup: keyboard });
-  await ctx.answerCallbackQuery();
-});
-
-bot.callbackQuery(/^gender_(m|w)$/, async (ctx) => {
   const keyboard = new InlineKeyboard()
     .text("👨 Для Мужчин", "target_men")
     .row()
@@ -373,7 +360,7 @@ bot.callbackQuery(/^show_sizes_(\d+)$/, async (ctx) => {
 
 bot.callbackQuery("ignore", (ctx) => ctx.answerCallbackQuery());
 
-// 🛒 ДОБАВЛЕНИЕ В КОРЗИНУ
+// 🛒 ДОБАВЛЕНИЕ В КОРЗИНУ (С КНОПКОЙ ПЕРЕХОДА В КОРЗИНУ)
 bot.callbackQuery(/^add_(\d+)_(.+)$/, async (ctx) => {
   const productId = parseInt(ctx.match[1]);
   const selectedSize = ctx.match[2];
@@ -393,8 +380,16 @@ bot.callbackQuery(/^add_(\d+)_(.+)$/, async (ctx) => {
     });
   }
 
-  await ctx.answerCallbackQuery({ text: `✅ ${product.name} (${chosenSizeLabel}) добавлен в корзину!` });
-  await ctx.reply(`✅ <b>${product.name}</b> (${chosenSizeLabel}) успешно добавлен в корзину!`, { parse_mode: "HTML" });
+  const navKeyboard = new InlineKeyboard()
+    .text("🛒 Перейти в корзину", "view_cart")
+    .row()
+    .text("🛍 Продолжить покупки", "open_catalog");
+
+  await ctx.answerCallbackQuery({ text: `✅ Добавлено!` });
+  await ctx.reply(
+    `✅ <b>${product.name}</b> (${chosenSizeLabel}) добавлен в корзину!`, 
+    { parse_mode: "HTML", reply_markup: navKeyboard }
+  );
 });
 
 // 🛒 КОРЗИНА И ИЗМЕНЕНИЕ КОЛИЧЕСТВА
@@ -469,7 +464,7 @@ bot.callbackQuery("clear_cart", async (ctx) => {
   await renderCart(ctx);
 });
 
-// 💳 ОФОРМЛЕНИЕ ЗАКАЗА
+// 💳 ОФОРМЛЕНИЕ ЗАКАЗА (ЗАПРОС ТЕЛЕФОНА)
 bot.callbackQuery("start_checkout", async (ctx) => {
   const session = getSession(ctx.from.id);
   if (!session.cart || session.cart.length === 0) {
@@ -483,10 +478,11 @@ bot.callbackQuery("start_checkout", async (ctx) => {
     .resized()
     .oneTime();
 
-  await ctx.reply("Для оформления заказа поделитесь вашим номером телефона:", { reply_markup: phoneKeyboard });
+  await ctx.reply("Для оформления заказа поделитесь вашим номером телефона с помощью кнопки ниже или напишите его вручную:", { reply_markup: phoneKeyboard });
   await ctx.answerCallbackQuery();
 });
 
+// Прием контакта через кнопку
 bot.on(":contact", async (ctx) => {
   const session = getSession(ctx.from.id);
   if (session.step === "waiting_phone") {
@@ -558,7 +554,7 @@ bot.callbackQuery(/^set_cat_(.+)$/, async (ctx) => {
   await ctx.answerCallbackQuery();
 });
 
-// 💳 ОПЛАТА
+// 💳 ВЫБОР СПОСОБА ОПЛАТЫ
 bot.callbackQuery(/^pay_(eshata|cash)$/, async (ctx) => {
   const paymentMethod = ctx.match[1];
   const session = getSession(ctx.from.id);
@@ -695,7 +691,16 @@ bot.on("message", async (ctx) => {
     return ctx.reply(`🎉 Товар "${session.newProduct.name}" успешно добавлен в базу!`);
   }
 
-  // АДРЕС И ЧЕК
+  // РУЧНОЙ ВВОД ТЕЛЕФОНА
+  if (session.step === "waiting_phone") {
+    session.phone = ctx.message.text;
+    session.step = "waiting_address";
+    return ctx.reply("Спасибо! Теперь введите ваш адрес доставки (город, улица, дом/квартира):", { 
+      reply_markup: { remove_keyboard: true } 
+    });
+  }
+
+  // АДРЕС И ОПЛАТА
   if (session.step === "waiting_address") {
     session.address = ctx.message.text;
     session.step = "idle";
@@ -709,6 +714,7 @@ bot.on("message", async (ctx) => {
     return;
   }
 
+  // ЧЕК
   if (session.step === "waiting_receipt") {
     if (!ctx.message.photo) {
       return ctx.reply("❌ Пожалуйста, отправьте именно фото/скриншот чека из приложения Эсхата!");
