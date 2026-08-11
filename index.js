@@ -87,13 +87,12 @@ async function seedInitialProducts() {
   }
 }
 
-const userSessions = {};
-
 function getSession(userId) {
-  if (!userSessions[userId]) {
-    userSessions[userId] = { cart: [], step: "idle", newProduct: {} };
+  const idStr = userId.toString();
+  if (!userSessions[idStr]) {
+    userSessions[idStr] = { cart: [], step: "idle", newProduct: {}, currentTarget: "men" };
   }
-  return userSessions[userId];
+  return userSessions[idStr];
 }
 
 // 🏁 1. ГЛАВНОЕ МЕНЮ И СТАРТ
@@ -232,15 +231,6 @@ bot.callbackQuery("back_to_main", async (ctx) => {
   await ctx.editMessageText("<b>Главное меню:</b>", { parse_mode: "HTML", reply_markup: keyboard });
 });
 
-// 🎯 КАТАЛОГ
-bot.callbackQuery("open_catalog", async (ctx) => {
-  const keyboard = new InlineKeyboard()
-    .text("👨 Я Мужчина", "gender_m")
-    .text("👩 Я Женщина", "gender_w");
-
-  await ctx.editMessageText("<b>Укажите ваш пол:</b>", { parse_mode: "HTML", reply_markup: keyboard });
-});
-
 bot.callbackQuery(/^gender_(m|w)$/, async (ctx) => {
   const keyboard = new InlineKeyboard()
     .text("👨 Для Мужчин", "target_men")
@@ -255,7 +245,7 @@ bot.callbackQuery(/^gender_(m|w)$/, async (ctx) => {
 bot.callbackQuery(/^target_(men|women|kids)$/, async (ctx) => {
   const target = ctx.match[1];
   const session = getSession(ctx.from.id);
-  session.currentTarget = target;
+  session.currentTarget = target; // Фиксируем выбор пользователя в сессии
 
   const keyboard = new InlineKeyboard();
 
@@ -270,7 +260,10 @@ bot.callbackQuery(/^target_(men|women|kids)$/, async (ctx) => {
       .text("🍏 Еда и продукты", "cat_food")
       .text("🧴 Моющие средства", "cat_cleaning");
   } else {
-    keyboard.text("👟 Кроссовки", "cat_shoes").row().text("👕 Футболки и Одежда", "cat_clothes");
+    keyboard
+      .text("👟 Кроссовки", "cat_shoes")
+      .row()
+      .text("👕 Футболки и Одежда", "cat_clothes");
   }
 
   await ctx.editMessageText("<b>Выберите категорию:</b>", { parse_mode: "HTML", reply_markup: keyboard });
@@ -294,13 +287,14 @@ async function showProductPage(ctx, category, pageIndex) {
   const session = getSession(ctx.from.id);
   const target = session.currentTarget || "men";
 
-  let query = "SELECT * FROM products WHERE category = ? AND target = ?";
-  let params = [category, target];
+  // Универсальный выбор для общих категорий
+  const products = await db.all(
+    "SELECT * FROM products WHERE category = ? AND (target = ? OR target = 'men')",
+    [category, target]
+  );
 
-  const products = await db.all(query, params);
-
-  if (products.length === 0) {
-    return ctx.answerCallbackQuery({ text: "Товары в этой категории пока отсутствуют!", show_alert: true });
+  if (!products || products.length === 0) {
+    return ctx.answerCallbackQuery({ text: "⚠️ В этой категории пока нет товаров!", show_alert: true });
   }
 
   if (pageIndex < 0 || pageIndex >= products.length) pageIndex = 0;
@@ -315,6 +309,28 @@ async function showProductPage(ctx, category, pageIndex) {
   }
   keyboard.row();
 
+  const prevPage = pageIndex - 1;
+  const nextPage = pageIndex + 1;
+
+  if (prevPage >= 0) keyboard.text("⬅️ Назад", `page_${category}_${prevPage}`);
+  keyboard.text(`${pageIndex + 1} / ${products.length}`, "ignore");
+  if (nextPage < products.length) keyboard.text("Вперед ➡️", `page_${category}_${nextPage}`);
+
+  const caption = `<b>${item.name}</b>\nБренд: ${item.brand}\n\n💰 <b>Цена:</b> ${item.price} руб.`;
+
+  try {
+    await ctx.replyWithPhoto(item.image, {
+      caption: caption,
+      parse_mode: "HTML",
+      reply_markup: keyboard
+    });
+  } catch (e) {
+    await ctx.reply(`${caption}\n\n[Картинка недоступна]`, {
+      parse_mode: "HTML",
+      reply_markup: keyboard
+    });
+  }
+}
   // Навигация по страницам
   const prevPage = pageIndex - 1;
   const nextPage = pageIndex + 1;
