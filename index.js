@@ -851,7 +851,8 @@ async function notifyAdminAboutOrder(orderId, userId, username, phone, address, 
   adminMessage += `👤 <b>Покупатель:</b> ${username} (ID: <code>${userId}</code>)\n`;
   adminMessage += `📞 <b>Телефон:</b> <code>${phone}</code>\n`;
   adminMessage += `🏠 <b>Адрес:</b> ${address}\n`;
-  adminMessage += `💳 <b>Оплата:</b> ${paymentMethod}\n\n`;
+  adminMessage += `💳 <b>Оплата:</b> ${paymentMethod}\n`;
+  adminMessage += `📌 <b>Статус:</b> 🆕 Новый\n\n`;
   adminMessage += `📦 <b>Состав:</b>\n${items}\n`;
   adminMessage += `💰 <b>ИТОГО:</b> ${total} руб.\n`;
 
@@ -863,15 +864,15 @@ async function notifyAdminAboutOrder(orderId, userId, username, phone, address, 
         reply_markup: adminKeyboard
       });
     } else {
-      await bot.api.sendMessage(ADMIN_CHAT_ID, adminMessage, { parse_mode: "HTML", reply_markup: adminKeyboard });
+      await bot.api.sendMessage(ADMIN_CHAT_ID, adminMessage, {
+        parse_mode: "HTML",
+        reply_markup: adminKeyboard
+      });
     }
   } catch (e) {
     console.error("Ошибка при отправке заказа админу:", e);
   }
 }
-
-bot.catch((err) => console.error("Ошибка:", err));
-
 // 🚀 ЗАПУСК ВЕБ-СЕРВЕРА И БОТА
 async function startApp() {
   await initDb();
