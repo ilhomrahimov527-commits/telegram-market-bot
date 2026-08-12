@@ -838,7 +838,9 @@ bot.callbackQuery(/^status_(proc|ship|done|canc)_(\d+)_(\d+)$/, async (ctx) => {
   await ctx.answerCallbackQuery({ text: `Статус изменен: ${statusMap[ctx.match[1]]}` });
 });
 
-// УВЕДОМЛЕНИЕ АДМИНА О НОВОМ ЗАКАЗЕ
+// ==========================================
+// 1. УВЕДОМЛЕНИЕ АДМИНА О НОВОМ ЗАКАЗЕ
+// ==========================================
 async function notifyAdminAboutOrder(orderId, userId, username, phone, address, items, total, paymentMethod, receiptPhoto) {
   const adminKeyboard = new InlineKeyboard()
     .text("📦 В работу", `status_proc_${orderId}_${userId}`)
@@ -873,6 +875,71 @@ async function notifyAdminAboutOrder(orderId, userId, username, phone, address, 
     console.error("Ошибка при отправке заказа админу:", e);
   }
 }
+
+// ==========================================
+// 2. ОБРАБОТКА СТАТУСА И УВЕДОМЛЕНИЕ КЛИЕНТА
+// ==========================================
+bot.callbackQuery(/^status_(proc|ship|done|canc)_(\d+)_(\d+)$/, async (ctx) => {
+  if (ctx.from.id.toString() !== ADMIN_CHAT_ID.toString()) return;
+
+  const action = ctx.match[1];
+  const orderId = ctx.match[2];
+  const userId = ctx.match[3];
+
+  const statusMap = {
+    proc: "⚙️ В обработке",
+    ship: "🚚 В доставке",
+    done: "✅ Выполнен",
+    canc: "❌ Отменен"
+  };
+
+  const userMessages = {
+    proc: `⚙️ Ваш заказ **№${orderId}** передан в работу и готовится к отправке!`,
+    ship: `🚚 Ваш заказ **№${orderId}** передан курьеру и уже находится в пути!`,
+    done: `🎉 Ваш заказ **№${orderId}** успешно выполнен! Спасибо за покупку!`,
+    canc: `❌ Ваш заказ **№${orderId}** был отменен. Если у вас есть вопросы, свяжитесь с менеджером.`
+  };
+
+  const newStatusText = statusMap[action];
+
+  // 1. Обновляем статус в БД
+  await db.run("UPDATE orders SET status = ? WHERE id = ?", [newStatusText, orderId]);
+
+  // 2. Уведомляем покупателя
+  try {
+    await bot.api.sendMessage(userId, userMessages[action], { parse_mode: "Markdown" });
+  } catch (err) {
+    console.error(`Не удалось отправить уведомление пользователю ${userId}:`, err.message);
+  }
+
+  await ctx.answerCallbackQuery({ text: `Статус изменен на: ${newStatusText}` });
+
+  // 3. Обновляем текст карточки у админа (заменяем строку статуса)
+  const isPhoto = !!ctx.callbackQuery.message.photo;
+  const currentText = isPhoto ? ctx.callbackQuery.message.caption : ctx.callbackQuery.message.text;
+
+  // Очищаем прошлый статус, если кнопку нажимают не в первый раз
+  const cleanText = currentText.replace(/\n\n📌 <b>Статус:<\/b> .*/g, "").replace(/\n\n<b>Текущий статус:<\/b> .*/g, "");
+  const updatedText = cleanText + `\n\n📌 <b>Статус:</b> ${newStatusText}`;
+
+  try {
+    if (isPhoto) {
+      await ctx.editMessageCaption({
+        caption: updatedText,
+        parse_mode: "HTML",
+        reply_markup: ctx.callbackQuery.message.reply_markup
+      });
+    } else {
+      await ctx.editMessageText(updatedText, {
+        parse_mode: "HTML",
+        reply_markup: ctx.callbackQuery.message.reply_markup
+      });
+    }
+  } catch (e) {
+    // Игнорируем ошибку, если текст не изменился при повторном клике
+  }
+});
+
 // 🚀 ЗАПУСК ВЕБ-СЕРВЕРА И БОТА
 async function startApp() {
   await initDb();
