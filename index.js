@@ -838,41 +838,54 @@ bot.callbackQuery(/^status_(proc|ship|done|canc)_(\d+)_(\d+)$/, async (ctx) => {
   await ctx.answerCallbackQuery({ text: `Статус изменен: ${statusMap[ctx.match[1]]}` });
 });
 
-// 💳 ВЫБОР СПОСОБА ОПЛАТЫ И ЗАПИСЬ В БД
-bot.callbackQuery(/^pay_(eshata|cash)$/, async (ctx) => {
-  const paymentMethod = ctx.match[1];
-  const userId = ctx.from.id;
-  const state = getUserState(userId);
+// ==========================================
+// 1. УВЕДОМЛЕНИЕ АДМИНА О НОВОМ ЗАКАЗЕ
+// ==========================================
+async function notifyAdminAboutOrder(orderId, userId, username, phone, address, items, total, paymentMethod, receiptPhoto) {
+  const safeUserId = userId ? userId.toString() : "0";
+  const safeOrderId = orderId ? orderId.toString() : "0";
 
-  const cartItems = await getCart(userId);
-  if (!cartItems || cartItems.length === 0) {
-    return ctx.answerCallbackQuery({ text: "Ваша корзина пуста!", show_alert: true });
+  const adminKeyboard = new InlineKeyboard()
+    .text("📦 В работу", `status_proc_${safeOrderId}_${safeUserId}`)
+    .text("🚚 В доставку", `status_ship_${safeOrderId}_${safeUserId}`)
+    .row()
+    .text("✅ Выполнен", `status_done_${safeOrderId}_${safeUserId}`)
+    .text("❌ Отменить", `status_canc_${safeOrderId}_${safeUserId}`);
+
+  let adminMessage = `🚨 <b>НОВЫЙ ЗАКАЗ №${safeOrderId}!</b>\n\n`;
+  adminMessage += `👤 <b>Покупатель:</b> ${username} (ID: <code>${safeUserId}</code>)\n`;
+  adminMessage += `📞 <b>Телефон:</b> <code>${phone}</code>\n`;
+  adminMessage += `🏠 <b>Адрес:</b> ${address}\n`;
+  adminMessage += `💳 <b>Оплата:</b> ${paymentMethod}\n`;
+  adminMessage += `📌 <b>Статус:</b> 🆕 Новый\n\n`;
+  adminMessage += `📦 <b>Состав:</b>\n${items}\n`;
+  adminMessage += `💰 <b>ИТОГО:</b> ${total} руб.\n`;
+
+  try {
+    if (receiptPhoto) {
+      await bot.api.sendPhoto(ADMIN_CHAT_ID, receiptPhoto, {
+        caption: adminMessage + "\n🧾 <b>Чек оплаты прикреплён выше!</b>",
+        parse_mode: "HTML",
+        reply_markup: adminKeyboard
+      });
+    } else {
+      await bot.api.sendMessage(ADMIN_CHAT_ID, adminMessage, {
+        parse_mode: "HTML",
+        reply_markup: adminKeyboard
+      });
+    }
+  } catch (e) {
+    console.error("Ошибка отправки заказа админу:", e.message);
   }
+}
 
-  let total = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-
-  if (paymentMethod === "eshata") {
-    state.step = "waiting_receipt";
-    const text =
-      `💳 <b>ОПЛАТА ЧЕРЕЗ БАНК ЭСХАТА</b>\n\n` +
-      `Пожалуйста, переведите <b>${total} руб.</b> на кошелёк/карту:\n` +
-      `📱 <b>Номер:</b> <code>${ESHATA_WALLET}</code>\n` +
-      `👤 <b>Получатель:</b> ${ESHATA_CARD_NAME}\n\n` +
-      `📸 <b>После оплаты отправьте скриншот чека в этот чат!</b>`;
-
-    await ctx.reply(text, { parse_mode: "HTML" });
-  } else if (paymentMethod === "cash") {
-    // Оформление заказа наличными без ожидания чека
-    await createOrderInDb(userId, ctx, "💵 Наличными при получении", null);
-  }
-  
-  await ctx.answerCallbackQuery();
-});
-
+// ==========================================
+// 2. СОЗДАНИЕ ЗАКАЗА В БАЗЕ ДАННЫХ
+// ==========================================
 async function createOrderInDb(userId, ctx, paymentLabel, receiptPhoto) {
   const state = getUserState(userId);
   const cartItems = await getCart(userId);
-  const username = ctx.from.username ? `@${ctx.from.username}` : "Без username";
+  const username = ctx.from.username ? `@${ctx.from.username}` : (ctx.from.first_name || "Пользователь");
 
   if (!cartItems || cartItems.length === 0) return;
 
@@ -889,14 +902,15 @@ async function createOrderInDb(userId, ctx, paymentLabel, receiptPhoto) {
   const address = state.address || "Не указан";
 
   try {
-    // 1. Запись основного заказа в БД
+    // 1. Запись заказа в таблицу orders
     const result = await db.run(
       `INSERT INTO orders (user_id, username, phone, address, total_price, payment_method, receipt_photo, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'new')`,
-      [userId, username, phone, address, total, paymentLabel, receiptPhoto]
+      [userId, username, phone, address, total, paymentLabel, receiptPhoto || null]
     );
+
     const orderId = result.lastID;
 
-    // 2. Запись товаров в order_items и уменьшение остатков stock
+    // 2. Сохранение позиций заказа и списание со склада
     for (const item of cartItems) {
       await db.run(
         `INSERT INTO order_items (order_id, product_id, quantity, size, price) VALUES (?, ?, ?, ?, ?)`,
@@ -909,16 +923,14 @@ async function createOrderInDb(userId, ctx, paymentLabel, receiptPhoto) {
       );
     }
 
-    // 3. Очистка корзины в базе данных
+    // 3. Очистка корзины
     await clearCartDb(userId);
-
-    // Сброс шага состояния
     state.step = "idle";
 
-    // 4. Отправка карточки заказа администратору
+    // 4. Отправка карточки заказа админу
     await notifyAdminAboutOrder(orderId, userId, username, phone, address, orderDetails, total, paymentLabel, receiptPhoto);
 
-    // 5. Подтверждение заказа покупателю
+    // 5. Уведомление покупателю
     const userReply = `🎉 <b>Заказ №${orderId} успешно оформлен!</b>\nСпособ оплаты: <b>${paymentLabel}</b>\n\nМенеджер свяжется с вами для подтверждения.`;
     await ctx.reply(userReply, { parse_mode: "HTML" });
 
