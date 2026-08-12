@@ -378,7 +378,7 @@ bot.callbackQuery("back_to_main", async (ctx) => {
 bot.callbackQuery("search_products", async (ctx) => {
   const state = getUserState(ctx.from.id);
   state.step = "waiting_search_query";
-  await ctx.reply("🔍 <b>Введите название или бренд товара для поиска:</b>\n(Например: Nike, LEGO, Футболка)");
+  await ctx.reply("🔍 Введите название или бренд товара для поиска:\n(Например: Nike, LEGO, Футболка)");
   await ctx.answerCallbackQuery();
 });
 
