@@ -9,7 +9,7 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || "8491952252";
 const PORT = process.env.PORT || 3000;
 
-// 💳 РЕКВИЗИТЫ ДЛЯ ОПЛАТЫ (Банк Эсхата)
+// 💳 РЕКВИЗИТЫ ДЛЯ ОПЛАТЫ
 const ESHATA_WALLET = process.env.ESHATA_WALLET || "+992035822424";
 const ESHATA_CARD_NAME = process.env.ESHATA_CARD_NAME || "Azam Р.";
 
@@ -25,7 +25,18 @@ async function initDb() {
 
   await db.exec('PRAGMA foreign_keys = ON;');
 
-  // 1. Таблица товаров
+  // 1. Таблица пользователей (для сохранения контактов и рассылки)
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      user_id INTEGER PRIMARY KEY,
+      username TEXT,
+      phone TEXT,
+      address TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // 2. Таблица товаров
   await db.exec(`
     CREATE TABLE IF NOT EXISTS products (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,7 +52,7 @@ async function initDb() {
     );
   `);
 
-  // 2. Таблица корзины
+  // 3. Таблица корзины
   await db.exec(`
     CREATE TABLE IF NOT EXISTS cart (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,7 +64,7 @@ async function initDb() {
     );
   `);
 
-  // 3. Таблица заказов
+  // 4. Таблица заказов
   await db.exec(`
     CREATE TABLE IF NOT EXISTS orders (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,7 +80,7 @@ async function initDb() {
     );
   `);
 
-  // 4. Позиции заказов
+  // 5. Позиции заказов
   await db.exec(`
     CREATE TABLE IF NOT EXISTS order_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -120,9 +131,16 @@ const userStates = {};
 function getUserState(userId) {
   const idStr = userId.toString();
   if (!userStates[idStr]) {
-    userStates[idStr] = { step: "idle", newProduct: {}, currentTarget: "men" };
+    userStates[idStr] = { step: "idle", newProduct: {}, currentTarget: "men", sortOrder: "default", isProcessing: false };
   }
   return userStates[idStr];
+}
+
+async function registerUser(userId, username) {
+  await db.run(
+    `INSERT INTO users (user_id, username) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET username = ?`,
+    [userId, username, username]
+  );
 }
 
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ КОРЗИНЫ
@@ -158,10 +176,14 @@ async function clearCartDb(userId) {
 // 🏁 1. ГЛАВНОЕ МЕНЮ И СТАРТ
 bot.command("start", async (ctx) => {
   const userId = ctx.from.id;
-  userStates[userId.toString()] = { step: "idle", newProduct: {}, currentTarget: "men" };
+  const username = ctx.from.username ? `@${ctx.from.username}` : (ctx.from.first_name || "Пользователь");
+  await registerUser(userId, username);
+
+  userStates[userId.toString()] = { step: "idle", newProduct: {}, currentTarget: "men", sortOrder: "default", isProcessing: false };
 
   const keyboard = new InlineKeyboard()
     .text("🛍 Каталог товаров", "open_catalog")
+    .text("🔍 Поиск", "search_products")
     .row()
     .text("📜 Мои заказы", "my_orders")
     .text("🛒 Корзина", "view_cart")
@@ -179,6 +201,14 @@ bot.command("start", async (ctx) => {
   });
 });
 
+// 🚫 КОМАНДА СБРОСА /CANCEL
+bot.command("cancel", async (ctx) => {
+  const state = getUserState(ctx.from.id);
+  state.step = "idle";
+  state.isProcessing = false;
+  await ctx.reply("❌ Текущее действие отменено.", { reply_markup: { remove_keyboard: true } });
+});
+
 // 👑 АДМИН-ПАНЕЛЬ
 bot.command("admin", async (ctx) => {
   if (ctx.from.id.toString() !== ADMIN_CHAT_ID.toString()) return;
@@ -193,10 +223,13 @@ bot.callbackQuery("admin_panel", async (ctx) => {
 async function showAdminMenu(ctx) {
   const keyboard = new InlineKeyboard()
     .text("➕ Добавить товар", "start_add_product")
+    .text("✏️ Изменить товар", "start_edit_product")
     .row()
     .text("❌ Удалить товар", "start_del_product")
+    .text("📊 Статистика", "admin_stats")
     .row()
-    .text("📜 История всех заказов", "admin_orders")
+    .text("📜 История заказов", "admin_orders")
+    .text("📢 Рассылка", "start_broadcast")
     .row()
     .text("⬅️ В главное меню", "back_to_main");
 
@@ -206,6 +239,38 @@ async function showAdminMenu(ctx) {
   });
   if (ctx.callbackQuery) await ctx.answerCallbackQuery();
 }
+
+// 📊 СТАТИСТИКА ДЛЯ АДМИНА
+bot.callbackQuery("admin_stats", async (ctx) => {
+  if (ctx.from.id.toString() !== ADMIN_CHAT_ID.toString()) return;
+
+  const totalOrders = await db.get("SELECT COUNT(*) as count, SUM(total_price) as sum FROM orders WHERE status != '❌ Отменен'");
+  const todayOrders = await db.get("SELECT COUNT(*) as count, SUM(total_price) as sum FROM orders WHERE status != '❌ Отменен' AND DATE(created_at) = DATE('now')");
+  const totalUsers = await db.get("SELECT COUNT(*) as count FROM users");
+
+  const statsText =
+    `<b>📊 СТАТИСТИКА МАГАЗИНА:</b>\n\n` +
+    `👤 <b>Всего клиентов:</b> ${totalUsers.count || 0}\n\n` +
+    `📅 <b>За сегодня:</b>\n` +
+    `• Заказов: <b>${todayOrders.count || 0}</b>\n` +
+    `• Выручка: <b>${todayOrders.sum || 0} руб.</b>\n\n` +
+    `📈 <b>За все время:</b>\n` +
+    `• Заказов: <b>${totalOrders.count || 0}</b>\n` +
+    `• Выручка: <b>${totalOrders.sum || 0} руб.</b>`;
+
+  const keyboard = new InlineKeyboard().text("⬅️ В админку", "admin_panel");
+  await ctx.reply(statsText, { parse_mode: "HTML", reply_markup: keyboard });
+  await ctx.answerCallbackQuery();
+});
+
+// 📢 РАССЫЛКА СООБЩЕНИЙ
+bot.callbackQuery("start_broadcast", async (ctx) => {
+  if (ctx.from.id.toString() !== ADMIN_CHAT_ID.toString()) return;
+  const state = getUserState(ctx.from.id);
+  state.step = "waiting_broadcast_text";
+  await ctx.reply("📢 <b>ВВЕДИТЕ ТЕКСТ РАССЫЛКИ:</b>\n\nСообщение увидят все зарегистрированные пользователи. Напишите текст или отправьте /cancel для отмены.", { parse_mode: "HTML" });
+  await ctx.answerCallbackQuery();
+});
 
 // 📜 ИСТОРИЯ ЗАКАЗОВ ДЛЯ ПОЛЬЗОВАТЕЛЯ
 bot.callbackQuery("my_orders", async (ctx) => {
@@ -285,7 +350,7 @@ bot.callbackQuery("show_faq", async (ctx) => {
 bot.callbackQuery("ask_manager", async (ctx) => {
   const state = getUserState(ctx.from.id);
   state.step = "waiting_question";
-  await ctx.reply("💬 <b>Напишите ваш вопрос для менеджера.</b>\nМы ответим вам прямо в этом чате!", { parse_mode: "HTML" });
+  await ctx.reply("💬 <b>Напишите ваш вопрос для менеджера.</b>\nМы ответим вам прямо в этом чате!\n(Отправьте /cancel для отмены)", { parse_mode: "HTML" });
   await ctx.answerCallbackQuery();
 });
 
@@ -293,6 +358,7 @@ bot.callbackQuery("back_to_main", async (ctx) => {
   const userId = ctx.from.id;
   const keyboard = new InlineKeyboard()
     .text("🛍 Каталог товаров", "open_catalog")
+    .text("🔍 Поиск", "search_products")
     .row()
     .text("📜 Мои заказы", "my_orders")
     .text("🛒 Корзина", "view_cart")
@@ -305,6 +371,14 @@ bot.callbackQuery("back_to_main", async (ctx) => {
   }
 
   await ctx.reply("<b>Главное меню:</b>", { parse_mode: "HTML", reply_markup: keyboard });
+  await ctx.answerCallbackQuery();
+});
+
+// 🔍 ПОИСК ТОВАРОВ
+bot.callbackQuery("search_products", async (ctx) => {
+  const state = getUserState(ctx.from.id);
+  state.step = "waiting_search_query";
+  await ctx.reply("🔍 <b>Введите название или бренд товара для поиска:</b>\n(Например: Nike, LEGO, Футболка)");
   await ctx.answerCallbackQuery();
 });
 
@@ -346,7 +420,15 @@ bot.callbackQuery(/^target_(men|women|kids)$/, async (ctx) => {
   await ctx.answerCallbackQuery();
 });
 
-// 📦 ПАГИНАЦИЯ И ПРОСМОТР КАТАЛОГА
+// 📦 СОРТИРОВКА И ПРОСМОТР КАТАЛОГА
+bot.callbackQuery(/^sort_(asc|desc)$/, async (ctx) => {
+  const order = ctx.match[1];
+  const state = getUserState(ctx.from.id);
+  state.sortOrder = order;
+  await showProductPage(ctx, state.currentCategory, 0);
+  await ctx.answerCallbackQuery({ text: `Сортировка: ${order === 'asc' ? 'Сначала дешевые' : 'Сначала дорогие'}` });
+});
+
 bot.callbackQuery(/^cat_(.+)$/, async (ctx) => {
   const category = ctx.match[1];
   const state = getUserState(ctx.from.id);
@@ -366,8 +448,12 @@ async function showProductPage(ctx, category, pageIndex) {
   const state = getUserState(ctx.from.id);
   const target = state.currentTarget || "men";
 
+  let orderBy = "id DESC";
+  if (state.sortOrder === "asc") orderBy = "price ASC";
+  if (state.sortOrder === "desc") orderBy = "price DESC";
+
   const products = await db.all(
-    "SELECT * FROM products WHERE category = ? AND (target = ? OR target = 'men') AND is_active = 1",
+    `SELECT * FROM products WHERE category = ? AND (target = ? OR target = 'men') AND is_active = 1 ORDER BY ${orderBy}`,
     [category, target]
   );
 
@@ -395,6 +481,10 @@ async function showProductPage(ctx, category, pageIndex) {
   if (prevPage >= 0) keyboard.text("⬅️ Назад", `page_${category}_${prevPage}`);
   keyboard.text(`${pageIndex + 1} / ${products.length}`, "ignore");
   if (nextPage < products.length) keyboard.text("Вперед ➡️", `page_${category}_${nextPage}`);
+
+  keyboard.row()
+    .text("💵 Дешевле", "sort_asc")
+    .text("💎 Дороже", "sort_desc");
 
   const caption = `<b>${item.name}</b>\nБренд: ${item.brand}\nВ наличии: ${item.stock} шт.\n\n💰 <b>Цена:</b> ${item.price} руб.`;
 
@@ -537,7 +627,7 @@ bot.callbackQuery("clear_cart", async (ctx) => {
   await renderCart(ctx);
 });
 
-// 💳 ОФОРМЛЕНИЕ ЗАКАЗА
+// 💳 ОФОРМЛЕНИЕ ЗАКАЗА (С ЗАПОМИНАНИЕМ АДРЕСА)
 bot.callbackQuery("start_checkout", async (ctx) => {
   const userId = ctx.from.id;
   const cartItems = await getCart(userId);
@@ -546,7 +636,46 @@ bot.callbackQuery("start_checkout", async (ctx) => {
     return ctx.answerCallbackQuery({ text: "Ваша корзина пуста!", show_alert: true });
   }
 
+  const savedUser = await db.get("SELECT * FROM users WHERE user_id = ?", [userId]);
   const state = getUserState(userId);
+
+  if (savedUser && savedUser.phone && savedUser.address) {
+    state.phone = savedUser.phone;
+    state.address = savedUser.address;
+
+    const keyboard = new InlineKeyboard()
+      .text("✅ Использовать эти данные", "use_saved_contacts")
+      .row()
+      .text("✏️ Ввести новые данные", "enter_new_contacts");
+
+    await ctx.reply(
+      `<b>У вас есть сохраненные данные:</b>\n\n📞 <b>Телефон:</b> ${savedUser.phone}\n🏠 <b>Адрес:</b> ${savedUser.address}\n\nИспользовать их для текущего заказа?`,
+      { parse_mode: "HTML", reply_markup: keyboard }
+    );
+  } else {
+    await promptPhoneInput(ctx);
+  }
+
+  await ctx.answerCallbackQuery();
+});
+
+bot.callbackQuery("use_saved_contacts", async (ctx) => {
+  const keyboard = new InlineKeyboard()
+    .text("💳 Карта / Кошелёк Эсхата", "pay_eshata")
+    .row()
+    .text("💵 Наличными при получении", "pay_cash");
+
+  await ctx.reply("Выберите способ оплаты:", { reply_markup: keyboard });
+  await ctx.answerCallbackQuery();
+});
+
+bot.callbackQuery("enter_new_contacts", async (ctx) => {
+  await promptPhoneInput(ctx);
+  await ctx.answerCallbackQuery();
+});
+
+async function promptPhoneInput(ctx) {
+  const state = getUserState(ctx.from.id);
   state.step = "waiting_phone";
 
   const phoneKeyboard = new Keyboard()
@@ -555,8 +684,7 @@ bot.callbackQuery("start_checkout", async (ctx) => {
     .oneTime();
 
   await ctx.reply("Для оформления заказа поделитесь вашим номером телефона с помощью кнопки ниже или напишите его вручную:", { reply_markup: phoneKeyboard });
-  await ctx.answerCallbackQuery();
-});
+}
 
 // Прием контакта через кнопку
 bot.on(":contact", async (ctx) => {
@@ -571,13 +699,54 @@ bot.on(":contact", async (ctx) => {
   }
 });
 
-// ➕ ДОБАВЛЕНИЕ И УДАЛЕНИЕ ТОВАРОВ (АДМИН)
+// ➕ ДОБАВЛЕНИЕ, РЕДАКТИРОВАНИЕ И УДАЛЕНИЕ ТОВАРОВ (АДМИН)
 bot.callbackQuery("start_add_product", async (ctx) => {
   if (ctx.from.id.toString() !== ADMIN_CHAT_ID.toString()) return;
   const state = getUserState(ctx.from.id);
   state.step = "add_prod_name";
   state.newProduct = {};
   await ctx.reply("➕ <b>Добавление товара (Шаг 1/7):</b> Введите название товара:", { parse_mode: "HTML" });
+  await ctx.answerCallbackQuery();
+});
+
+// РЕДАКТИРОВАНИЕ ТОВАРОВ
+bot.callbackQuery("start_edit_product", async (ctx) => {
+  if (ctx.from.id.toString() !== ADMIN_CHAT_ID.toString()) return;
+  const allProducts = await db.all("SELECT * FROM products WHERE is_active = 1 ORDER BY id DESC");
+
+  if (allProducts.length === 0) {
+    await ctx.reply("В базе пока нет активных товаров.");
+    return ctx.answerCallbackQuery();
+  }
+
+  for (const item of allProducts) {
+    const keyboard = new InlineKeyboard()
+      .text(`✏️ Изменить цену`, `edit_price_${item.id}`)
+      .text(`📦 Остаток (Stock)`, `edit_stock_${item.id}`);
+
+    await ctx.reply(`<b>[ID: ${item.id}] ${item.name}</b>\nЦена: ${item.price} руб. | На складе: ${item.stock} шт.`, {
+      parse_mode: "HTML",
+      reply_markup: keyboard
+    });
+  }
+  await ctx.answerCallbackQuery();
+});
+
+bot.callbackQuery(/^edit_price_(\d+)$/, async (ctx) => {
+  if (ctx.from.id.toString() !== ADMIN_CHAT_ID.toString()) return;
+  const productId = ctx.match[1];
+  const state = getUserState(ctx.from.id);
+  state.step = `waiting_new_price_${productId}`;
+  await ctx.reply(`<b>Введите новую цену для товара ID ${productId}:</b>`, { parse_mode: "HTML" });
+  await ctx.answerCallbackQuery();
+});
+
+bot.callbackQuery(/^edit_stock_(\d+)$/, async (ctx) => {
+  if (ctx.from.id.toString() !== ADMIN_CHAT_ID.toString()) return;
+  const productId = ctx.match[1];
+  const state = getUserState(ctx.from.id);
+  state.step = `waiting_new_stock_${productId}`;
+  await ctx.reply(`<b>Введите новое количество товара на складе для ID ${productId}:</b>`, { parse_mode: "HTML" });
   await ctx.answerCallbackQuery();
 });
 
@@ -672,6 +841,12 @@ async function notifyAdminAboutOrder(orderId, userId, username, phone, address, 
     .text("✅ Выполнен", `status_done_${safeOrderId}_${safeUserId}`)
     .text("❌ Отменить", `status_canc_${safeOrderId}_${safeUserId}`);
 
+  if (receiptPhoto) {
+    adminKeyboard.row()
+      .text("✅ Подтвердить чек", `receipt_ok_${safeOrderId}_${safeUserId}`)
+      .text("❌ Отклонить чек", `receipt_bad_${safeOrderId}_${safeUserId}`);
+  }
+
   let adminMessage = `🚨 <b>НОВЫЙ ЗАКАЗ №${safeOrderId}!</b>\n\n`;
   adminMessage += `👤 <b>Покупатель:</b> ${username} (ID: <code>${safeUserId}</code>)\n`;
   adminMessage += `📞 <b>Телефон:</b> <code>${phone}</code>\n`;
@@ -699,13 +874,20 @@ async function notifyAdminAboutOrder(orderId, userId, username, phone, address, 
   }
 }
 
-// 2. СОЗДАНИЕ ЗАКАЗА В БАЗЕ ДАННЫХ
+// 2. СОЗДАНИЕ ЗАКАЗА В БАЗЕ ДАННЫХ (С ЗАЩИТОЙ ОТ ДВОЙНОГО КЛИКА)
 async function createOrderInDb(userId, ctx, paymentLabel, receiptPhoto) {
   const state = getUserState(userId);
+
+  if (state.isProcessing) return;
+  state.isProcessing = true;
+
   const cartItems = await getCart(userId);
   const username = ctx.from.username ? `@${ctx.from.username}` : (ctx.from.first_name || "Пользователь");
 
-  if (!cartItems || cartItems.length === 0) return;
+  if (!cartItems || cartItems.length === 0) {
+    state.isProcessing = false;
+    return;
+  }
 
   let total = 0;
   let orderDetails = "";
@@ -720,6 +902,12 @@ async function createOrderInDb(userId, ctx, paymentLabel, receiptPhoto) {
   const address = state.address || "Не указан";
 
   try {
+    // Сохранение/обновление контактов пользователя
+    await db.run(
+      `INSERT INTO users (user_id, username, phone, address) VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET phone = ?, address = ?`,
+      [userId, username, phone, address, phone, address]
+    );
+
     // 1. Запись заказа в таблицу orders
     const result = await db.run(
       `INSERT INTO orders (user_id, username, phone, address, total_price, payment_method, receipt_photo, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'new')`,
@@ -741,7 +929,7 @@ async function createOrderInDb(userId, ctx, paymentLabel, receiptPhoto) {
       );
     }
 
-    // 3. Очистка корзины
+    // 3. Очистка корзины и сброс состояния
     await clearCartDb(userId);
     state.step = "idle";
 
@@ -755,6 +943,8 @@ async function createOrderInDb(userId, ctx, paymentLabel, receiptPhoto) {
   } catch (err) {
     console.error("Ошибка сохранения заказа в БД:", err);
     await ctx.reply("❌ Произошла ошибка при сохранении заказа. Попробуйте еще раз.");
+  } finally {
+    state.isProcessing = false;
   }
 }
 
@@ -764,6 +954,77 @@ bot.on("message", async (ctx) => {
 
   const userId = ctx.from.id;
   const state = getUserState(userId);
+
+  // ПОИСК ТОВАРОВ
+  if (state.step === "waiting_search_query") {
+    state.step = "idle";
+    const query = `%${ctx.message.text.trim()}%`;
+    const results = await db.all("SELECT * FROM products WHERE (name LIKE ? OR brand LIKE ?) AND is_active = 1", [query, query]);
+
+    if (results.length === 0) {
+      return ctx.reply("❌ По вашему запросу ничего не найдено. Попробуйте ввести другое слово.");
+    }
+
+    await ctx.reply(`<b>🔎 Найдено товаров: ${results.length}</b>`, { parse_mode: "HTML" });
+    for (const item of results) {
+      const keyboard = new InlineKeyboard();
+      if (item.stock <= 0) {
+        keyboard.text("❌ Нет в наличии", "ignore");
+      } else if (item.sizes && item.sizes !== "nosize") {
+        keyboard.text("📏 Выбрать размер", `show_sizes_${item.id}`);
+      } else {
+        keyboard.text(`🛒 В корзину (${item.price} руб.)`, `add_${item.id}_nosize`);
+      }
+      await ctx.replyWithPhoto(item.image, { caption: `<b>${item.name}</b>\nБренд: ${item.brand}\nЦена: ${item.price} руб.`, parse_mode: "HTML", reply_markup: keyboard });
+    }
+    return;
+  }
+
+  // МАССОВАЯ РАССЫЛКА (АДМИН)
+  if (state.step === "waiting_broadcast_text") {
+    state.step = "idle";
+    const broadcastText = ctx.message.text;
+    const allUsers = await db.all("SELECT user_id FROM users");
+
+    let count = 0;
+    for (const u of allUsers) {
+      try {
+        await bot.api.sendMessage(u.user_id, `📢 <b>ОБЪЯВЛЕНИЕ:</b>\n\n${broadcastText}`, { parse_mode: "HTML" });
+        count++;
+      } catch (e) {
+        // Игнорируем заблокировавших бота пользователей
+      }
+    }
+    return ctx.reply(`✅ Рассылка завершена! Доставлено пользователям: ${count}`);
+  }
+
+  // РЕДАКТИРОВАНИЕ ЦЕНЫ
+  if (state.step && state.step.startsWith("waiting_new_price_")) {
+    const productId = state.step.replace("waiting_new_price_", "");
+    const newPrice = parseInt(ctx.message.text);
+
+    if (isNaN(newPrice) || newPrice <= 0) {
+      return ctx.reply("❌ Введите корректную цену!");
+    }
+
+    await db.run("UPDATE products SET price = ? WHERE id = ?", [newPrice, productId]);
+    state.step = "idle";
+    return ctx.reply(`✅ Цена для товара ID ${productId} обновлена до ${newPrice} руб.!`);
+  }
+
+  // РЕДАКТИРОВАНИЕ ОСТАТКА НА СКЛАДЕ
+  if (state.step && state.step.startsWith("waiting_new_stock_")) {
+    const productId = state.step.replace("waiting_new_stock_", "");
+    const newStock = parseInt(ctx.message.text);
+
+    if (isNaN(newStock) || newStock < 0) {
+      return ctx.reply("❌ Введите корректное число!");
+    }
+
+    await db.run("UPDATE products SET stock = ? WHERE id = ?", [newStock, productId]);
+    state.step = "idle";
+    return ctx.reply(`✅ Остаток на складе для товара ID ${productId} обновлен до ${newStock} шт.!`);
+  }
 
   // ВОПРОС МЕНЕДЖЕРУ
   if (state.step === "waiting_question") {
@@ -886,7 +1147,23 @@ bot.callbackQuery(/^reply_user_(\d+)$/, async (ctx) => {
   await ctx.answerCallbackQuery();
 });
 
-// КНОПКИ ИЗМЕНЕНИЯ СТАТУСА ЗАКАЗА (С УВЕДОМЛЕНИЕМ ПОКУПАТЕЛЯ)
+// ПРОВЕРКА ЧЕКА АДМИНОМ
+bot.callbackQuery(/^receipt_(ok|bad)_(\d+)_(\d+)$/, async (ctx) => {
+  if (ctx.from.id.toString() !== ADMIN_CHAT_ID.toString()) return;
+  const action = ctx.match[1];
+  const orderId = ctx.match[2];
+  const targetUserId = ctx.match[3];
+
+  if (action === "ok") {
+    await ctx.answerCallbackQuery({ text: "Чек подтвержден!" });
+    await bot.api.sendMessage(targetUserId, `✅ <b>Оплата по заказу №${orderId} успешно подтверждена!</b>`, { parse_mode: "HTML" });
+  } else {
+    await ctx.answerCallbackQuery({ text: "Чек отклонен!" });
+    await bot.api.sendMessage(targetUserId, `❌ <b>Оплата по заказу №${orderId} отклонена.</b> Свяжитесь с менеджером.`, { parse_mode: "HTML" });
+  }
+});
+
+// КНОПКИ ИЗМЕНЕНИЯ СТАТУСА ЗАКАЗА (С ВОЗВРАТОМ НА СКЛАД И УВЕДОМЛЕНИЕМ ПОКУПАТЕЛЯ)
 bot.callbackQuery(/^status_(proc|ship|done|canc)_(\d+)_(\d+)$/, async (ctx) => {
   if (ctx.from.id.toString() !== ADMIN_CHAT_ID.toString()) return;
 
@@ -904,19 +1181,29 @@ bot.callbackQuery(/^status_(proc|ship|done|canc)_(\d+)_(\d+)$/, async (ctx) => {
   const statusText = statusMap[action];
 
   try {
+    const existingOrder = await db.get("SELECT status FROM orders WHERE id = ?", [orderId]);
+
+    // ВОЗВРАТ ТОВАРОВ НА СКЛАД ПРИ ОТМЕНЕ
+    if (action === "canc" && existingOrder && existingOrder.status !== "❌ Отменен") {
+      const items = await db.all("SELECT product_id, quantity FROM order_items WHERE order_id = ?", [orderId]);
+      for (const item of items) {
+        await db.run("UPDATE products SET stock = stock + ? WHERE id = ?", [item.quantity, item.product_id]);
+      }
+    }
+
     // 1. Обновляем статус в БД
     await db.run("UPDATE orders SET status = ? WHERE id = ?", [statusText, orderId]);
 
-    // 2. Отправляем сообщение админу во всплывающем окне
+    // 2. Всплывающее окно
     await ctx.answerCallbackQuery({ text: `Статус изменен: ${statusText}` });
 
-    // 3. Отправляем сообщение покупателю в ЛС
+    // 3. Отправляем сообщение покупателю
     const userNotification = `ℹ️ <b>Статус вашего заказа №${orderId} изменен!</b>\n\nТекущий статус: <b>${statusText}</b>`;
     await bot.api.sendMessage(targetUserId, userNotification, { parse_mode: "HTML" });
 
   } catch (err) {
-    console.error("Ошибка при обновлении статуса или отправке покупателю:", err.message);
-    await ctx.answerCallbackQuery({ text: " Ошибка при отправке уведомления покупателю", show_alert: true });
+    console.error("Ошибка при обновлении статуса:", err.message);
+    await ctx.answerCallbackQuery({ text: "Ошибка при отправке уведомления покупателю", show_alert: true });
   }
 });
 
