@@ -1,4 +1,4 @@
-const { GoogleGenAI } = require("@google/genai");
+import { GoogleGenAI } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const { Bot, InlineKeyboard, Keyboard } = require("grammy");
@@ -1210,58 +1210,58 @@ bot.callbackQuery(/^status_(proc|ship|done|canc)_(\d+)_(\d+)$/, async (ctx) => {
   }
 });
 
-// ВОПРОС МЕНЕДЖЕРУ / ИИ-КОНСУЛЬТАНТУ (GEMINI)
-if (state.step === "waiting_question") {
-  state.step = "idle";
-  const userQuery = ctx.message.text;
+// Обязательно должна быть функция bot.on или bot.hears!
+bot.on("message:text", async (ctx) => {
+  const userId = ctx.from.id;
 
-  // 1. Формируем контекст товаров из базы данных
-  const products = await db.all("SELECT name, price, brand, category FROM products WHERE is_active = 1");
-  const productContext = products.map(p => `- ${p.name} (${p.brand}): ${p.price} руб.`).join("\n");
+  // Ваш блок проверки состояния находится ВНУТРИ функции
+  if (state.step === "waiting_question") {
+    state.step = "idle";
+    const userQuery = ctx.message.text;
 
-  try {
-    await ctx.reply("🤖 *ИИ-консультант думает над ответом...*", { parse_mode: "Markdown" });
+    const products = await db.all("SELECT name, price, brand, category FROM products WHERE is_active = 1");
+    const productContext = products.map(p => `- ${p.name} (${p.brand}): ${p.price} руб.`).join("\n");
 
-    const systemInstruction = `Ты — вежливый AI-консультант в интернет-магазине. 
+    try {
+      await ctx.reply("🤖 *ИИ-консультант думает над ответом...*", { parse_mode: "Markdown" });
+
+      const systemInstruction = `Ты — вежливый AI-консультант в интернет-магазине. 
 Вот актуальный каталог товаров:
 ${productContext}
 
 Отвечай кратко, вежливо и помогай клиенту с выбором. Если не знаешь ответа, предложи связаться с менеджером.`;
 
-    // 2. Запрос к Gemini (используем быструю модель gemini-2.5-flash)
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: userQuery,
-      config: {
-        systemInstruction: systemInstruction,
-      }
-    });
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: userQuery,
+        config: { systemInstruction }
+      });
 
-    const aiAnswer = response.text;
+      const aiAnswer = response.text;
+      const keyboard = new InlineKeyboard().text("🙋‍♂️ Задать вопрос человеку", "ask_human");
 
-    // 3. Отправка ответа клиенту
-    const keyboard = new InlineKeyboard().text("🙋‍♂️ Задать вопрос человеку", "ask_human");
-    return await ctx.reply(`🤖 <b>Ответ ИИ-помощника:</b>\n\n${aiAnswer}`, {
-      parse_mode: "HTML",
-      reply_markup: keyboard
-    });
+      // Находясь внутри (ctx) => { ... }, return сработает без ошибок!
+      return await ctx.reply(`🤖 <b>Ответ ИИ-помощника:</b>\n\n${aiAnswer}`, {
+        parse_mode: "HTML",
+        reply_markup: keyboard
+      });
 
-  } catch (error) {
-    console.error("Ошибка Gemini:", error);
+    } catch (error) {
+      console.error("Ошибка Gemini:", error);
 
-    // Фолбэк: передача вопроса админу, если ИИ недоступен
-    const username = ctx.from.username ? `@${ctx.from.username}` : "Без username";
-    const replyKb = new InlineKeyboard().text("💬 Ответить клиенту", `reply_user_${userId}`);
+      const username = ctx.from.username ? `@${ctx.from.username}` : "Без username";
+      const replyKb = new InlineKeyboard().text("💬 Ответить клиенту", `reply_user_${userId}`);
 
-    await bot.api.sendMessage(
-      ADMIN_CHAT_ID,
-      `❓ <b>ВОПРОС ОТ КЛИЕНТА</b> ${username} (ID: <code>${userId}</code>):\n\n"${userQuery}"`,
-      { parse_mode: "HTML", reply_markup: replyKb }
-    );
+      await bot.api.sendMessage(
+        ADMIN_CHAT_ID,
+        `❓ <b>ВОПРОС ОТ КЛИЕНТА</b> ${username} (ID: <code>${userId}</code>):\n\n"${userQuery}"`,
+        { parse_mode: "HTML", reply_markup: replyKb }
+      );
 
-    return ctx.reply("✅ Ваш вопрос передан менеджеру!");
+      return await ctx.reply("✅ Ваш вопрос передан менеджеру!");
+    }
   }
-}
+}); // Закрывающая скобка обработчика bot.on
 
 // 🚀 ЗАПУСК ВЕБ-СЕРВЕРА И БОТА
 async function startApp() {
