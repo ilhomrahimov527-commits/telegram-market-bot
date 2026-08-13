@@ -1,12 +1,13 @@
+import { Bot, InlineKeyboard, Keyboard } from "grammy";
 import { GoogleGenAI } from "@google/genai";
+import dotenv from "dotenv";
+import sqlite3 from "sqlite3";
+import { open } from "sqlite";
+import http from "http";
+
+dotenv.config();
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-const { Bot, InlineKeyboard, Keyboard } = require("grammy");
-const sqlite3 = require("sqlite3");
-const { open } = require("sqlite");
-const http = require("http");
-
-require("dotenv").config();
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || "8491952252";
