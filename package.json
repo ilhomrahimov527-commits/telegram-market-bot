@@ -1,1 +1,1 @@
-{"name":"telegram-market-bot","version":"1.0.0","main":"index.js","scripts":{"start":"node index.js"},"engines":{"node":"20.x"},"dependencies":{"dotenv":"^16.4.5","grammy":"^1.30.0","sqlite":"^5.1.1","sqlite3":"^5.1.7"}}
+{"name":"telegram-market-bot","version":"1.0.0","main":"index.js","scripts":{"start":"node index.js"},"engines":{"node":"20.x"},"dependencies":{"@google/genai":"^2.17.0","dotenv":"^16.4.5","grammy":"^1.30.0","openai":"^7.4.0","sqlite":"^5.1.1","sqlite3":"^5.1.7"}}

@@ -1,3 +1,6 @@
+import { GoogleGenAI } from "@google/genai";
+
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const { Bot, InlineKeyboard, Keyboard } = require("grammy");
 const sqlite3 = require("sqlite3");
 const { open } = require("sqlite");
@@ -1206,6 +1209,59 @@ bot.callbackQuery(/^status_(proc|ship|done|canc)_(\d+)_(\d+)$/, async (ctx) => {
     await ctx.answerCallbackQuery({ text: "Ошибка при отправке уведомления покупателю", show_alert: true });
   }
 });
+
+// ВОПРОС МЕНЕДЖЕРУ / ИИ-КОНСУЛЬТАНТУ (GEMINI)
+if (state.step === "waiting_question") {
+  state.step = "idle";
+  const userQuery = ctx.message.text;
+
+  // 1. Формируем контекст товаров из базы данных
+  const products = await db.all("SELECT name, price, brand, category FROM products WHERE is_active = 1");
+  const productContext = products.map(p => `- ${p.name} (${p.brand}): ${p.price} руб.`).join("\n");
+
+  try {
+    await ctx.reply("🤖 *ИИ-консультант думает над ответом...*", { parse_mode: "Markdown" });
+
+    const systemInstruction = `Ты — вежливый AI-консультант в интернет-магазине. 
+Вот актуальный каталог товаров:
+${productContext}
+
+Отвечай кратко, вежливо и помогай клиенту с выбором. Если не знаешь ответа, предложи связаться с менеджером.`;
+
+    // 2. Запрос к Gemini (используем быструю модель gemini-2.5-flash)
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: userQuery,
+      config: {
+        systemInstruction: systemInstruction,
+      }
+    });
+
+    const aiAnswer = response.text;
+
+    // 3. Отправка ответа клиенту
+    const keyboard = new InlineKeyboard().text("🙋‍♂️ Задать вопрос человеку", "ask_human");
+    return await ctx.reply(`🤖 <b>Ответ ИИ-помощника:</b>\n\n${aiAnswer}`, {
+      parse_mode: "HTML",
+      reply_markup: keyboard
+    });
+
+  } catch (error) {
+    console.error("Ошибка Gemini:", error);
+
+    // Фолбэк: передача вопроса админу, если ИИ недоступен
+    const username = ctx.from.username ? `@${ctx.from.username}` : "Без username";
+    const replyKb = new InlineKeyboard().text("💬 Ответить клиенту", `reply_user_${userId}`);
+
+    await bot.api.sendMessage(
+      ADMIN_CHAT_ID,
+      `❓ <b>ВОПРОС ОТ КЛИЕНТА</b> ${username} (ID: <code>${userId}</code>):\n\n"${userQuery}"`,
+      { parse_mode: "HTML", reply_markup: replyKb }
+    );
+
+    return ctx.reply("✅ Ваш вопрос передан менеджеру!");
+  }
+}
 
 // 🚀 ЗАПУСК ВЕБ-СЕРВЕРА И БОТА
 async function startApp() {
