@@ -1241,7 +1241,7 @@ ${productContext}
       const keyboard = new InlineKeyboard().text("🙋‍♂️ Задать вопрос человеку", "ask_human");
 
       // Находясь внутри (ctx) => { ... }, return сработает без ошибок!
-      return await ctx.reply(`🤖 <b>Ответ ИИ-помощника:</b>\n\n${aiAnswer}`, {
+       await ctx.reply(`🤖 <b>Ответ ИИ-помощника:</b>\n\n${aiAnswer}`, {
         parse_mode: "HTML",
         reply_markup: keyboard
       });
