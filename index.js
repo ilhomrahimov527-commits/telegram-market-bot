@@ -859,7 +859,6 @@ async function notifyAdminAboutOrder(orderId, userId, username, phone, address, 
   adminMessage += `📌 <b>Статус:</b> 🆕 Новый\n\n`;
   adminMessage += `📦 <b>Состав:</b>\n${items}\n`;
   adminMessage += `💰 <b>ИТОГО:</b> ${total} руб.\n`;
-
   try {
     if (receiptPhoto) {
       await bot.api.sendPhoto(ADMIN_CHAT_ID, receiptPhoto, {
@@ -952,317 +951,109 @@ async function createOrderInDb(userId, ctx, paymentLabel, receiptPhoto) {
   }
 }
 
-// 🛠 ОБРАБОТКА ВВОДА И ВАЛИДАЦИЯ
-bot.on("message", async (ctx) => {
-  if (ctx.message.text && ctx.message.text.startsWith("/")) return;
+// 🤖 ОБРАБОТКА ВОПРОСА К ИИ-КОНСУЛЬТАНТУ
+bot.on("message:text", async (ctx) => {
+  // Игнорируем команды (например, /start)
+  if (ctx.message.text.startsWith("/")) return;
 
   const userId = ctx.from.id;
   const state = getUserState(userId);
 
-  // ПОИСК ТОВАРОВ
-  if (state.step === "waiting_search_query") {
-    state.step = "idle";
-    const query = `%${ctx.message.text.trim()}%`;
-    const results = await db.all("SELECT * FROM products WHERE (name LIKE ? OR brand LIKE ?) AND is_active = 1", [query, query]);
-
-    if (results.length === 0) {
-      return ctx.reply("❌ По вашему запросу ничего не найдено. Попробуйте ввести другое слово.");
-    }
-
-    await ctx.reply(`<b>🔎 Найдено товаров: ${results.length}</b>`, { parse_mode: "HTML" });
-    for (const item of results) {
-      const keyboard = new InlineKeyboard();
-      if (item.stock <= 0) {
-        keyboard.text("❌ Нет в наличии", "ignore");
-      } else if (item.sizes && item.sizes !== "nosize") {
-        keyboard.text("📏 Выбрать размер", `show_sizes_${item.id}`);
-      } else {
-        keyboard.text(`🛒 В корзину (${item.price} руб.)`, `add_${item.id}_nosize`);
-      }
-      await ctx.replyWithPhoto(item.image, { caption: `<b>${item.name}</b>\nБренд: ${item.brand}\nЦена: ${item.price} руб.`, parse_mode: "HTML", reply_markup: keyboard });
-    }
-    return;
-  }
-
-  // МАССОВАЯ РАССЫЛКА (АДМИН)
-  if (state.step === "waiting_broadcast_text") {
-    state.step = "idle";
-    const broadcastText = ctx.message.text;
-    const allUsers = await db.all("SELECT user_id FROM users");
-
-    let count = 0;
-    for (const u of allUsers) {
-      try {
-        await bot.api.sendMessage(u.user_id, `📢 <b>ОБЪЯВЛЕНИЕ:</b>\n\n${broadcastText}`, { parse_mode: "HTML" });
-        count++;
-      } catch (e) {
-        // Игнорируем заблокировавших бота пользователей
-      }
-    }
-    return ctx.reply(`✅ Рассылка завершена! Доставлено пользователям: ${count}`);
-  }
-
-  // РЕДАКТИРОВАНИЕ ЦЕНЫ
-  if (state.step && state.step.startsWith("waiting_new_price_")) {
-    const productId = state.step.replace("waiting_new_price_", "");
-    const newPrice = parseInt(ctx.message.text);
-
-    if (isNaN(newPrice) || newPrice <= 0) {
-      return ctx.reply("❌ Введите корректную цену!");
-    }
-
-    await db.run("UPDATE products SET price = ? WHERE id = ?", [newPrice, productId]);
-    state.step = "idle";
-    return ctx.reply(`✅ Цена для товара ID ${productId} обновлена до ${newPrice} руб.!`);
-  }
-
-  // РЕДАКТИРОВАНИЕ ОСТАТКА НА СКЛАДЕ
-  if (state.step && state.step.startsWith("waiting_new_stock_")) {
-    const productId = state.step.replace("waiting_new_stock_", "");
-    const newStock = parseInt(ctx.message.text);
-
-    if (isNaN(newStock) || newStock < 0) {
-      return ctx.reply("❌ Введите корректное число!");
-    }
-
-    await db.run("UPDATE products SET stock = ? WHERE id = ?", [newStock, productId]);
-    state.step = "idle";
-    return ctx.reply(`✅ Остаток на складе для товара ID ${productId} обновлен до ${newStock} шт.!`);
-  }
-
-  // ВОПРОС МЕНЕДЖЕРУ
   if (state.step === "waiting_question") {
-    state.step = "idle";
-    const username = ctx.from.username ? `@${ctx.from.username}` : "Без username";
-    const replyKb = new InlineKeyboard().text("💬 Ответить клиенту", `reply_user_${userId}`);
-
-    await bot.api.sendMessage(
-      ADMIN_CHAT_ID,
-      `❓ <b>ВОПРОС ОТ КЛИЕНТА</b> ${username} (ID: <code>${userId}</code>):\n\n"${ctx.message.text}"`,
-      { parse_mode: "HTML", reply_markup: replyKb }
-    );
-
-    return ctx.reply("✅ Ваш вопрос отправлен менеджеру!");
-  }
-
-  // ОТВЕТ МЕНЕДЖЕРА
-  if (state.step && state.step.startsWith("replying_to_")) {
-    const targetUserId = state.step.replace("replying_to_", "");
-    state.step = "idle";
-
-    try {
-      await bot.api.sendMessage(targetUserId, `💬 <b>Ответ от менеджера:</b>\n\n${ctx.message.text}`, { parse_mode: "HTML" });
-      return ctx.reply("✅ Ответ успешно доставлен клиенту!");
-    } catch (e) {
-      return ctx.reply("❌ Не удалось отправить ответ пользователю.");
-    }
-  }
-
-  // АДМИН: ПОШАГОВОЕ ДОБАВЛЕНИЕ
-  if (state.step === "add_prod_name") {
-    state.newProduct.name = ctx.message.text;
-    state.step = "idle";
-    const kb = new InlineKeyboard().text("👨 Мужское", "set_target_men").text("👩 Женское", "set_target_women").row().text("👶 Детское", "set_target_kids");
-    return ctx.reply("Шаг 2/7: Выберите целевую аудиторию:", { reply_markup: kb });
-  }
-
-  if (state.step === "add_prod_brand") {
-    state.newProduct.brand = ctx.message.text;
-    state.step = "add_prod_price";
-    return ctx.reply("Шаг 5/7: Введите цену (только положительное число):");
-  }
-
-  if (state.step === "add_prod_price") {
-    const price = parseInt(ctx.message.text);
-    if (isNaN(price) || price <= 0) {
-      return ctx.reply("❌ Неверная цена! Пожалуйста, введите положительное число:");
-    }
-    state.newProduct.price = price;
-    state.step = "add_prod_sizes";
-    return ctx.reply("Шаг 6/7: Введите размеры через запятую (например 40,41,42) или nosize:");
-  }
-
-  if (state.step === "add_prod_sizes") {
-    state.newProduct.sizes = ctx.message.text.trim();
-    state.step = "add_prod_image";
-    return ctx.reply("Шаг 7/7: Отправьте ссылку на картинку (http...) или фото:");
-  }
-
-  if (state.step === "add_prod_image") {
-    let imageUrl = ctx.message.photo ? ctx.message.photo[ctx.message.photo.length - 1].file_id : ctx.message.text;
-
-    if (!ctx.message.photo && (!imageUrl.startsWith("http://") && !imageUrl.startsWith("https://"))) {
-      return ctx.reply("❌ Пожалуйста, отправьте корректную ссылку на изображение (начинающуюся с http:// или https://) или фото!");
-    }
-
-    state.newProduct.image = imageUrl;
-
-    await db.run(
-      `INSERT INTO products (name, target, category, brand, price, image, sizes, stock, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, 10, 1)`,
-      [state.newProduct.name, state.newProduct.target, state.newProduct.category, state.newProduct.brand, state.newProduct.price, state.newProduct.image, state.newProduct.sizes]
-    );
-
-    state.step = "idle";
-    return ctx.reply(`🎉 Товар "${state.newProduct.name}" успешно добавлен в базу!`);
-  }
-
-  // РУЧНОЙ ВВОД ТЕЛЕФОНА
-  if (state.step === "waiting_phone") {
-    state.phone = ctx.message.text;
-    state.step = "waiting_address";
-    return ctx.reply("Спасибо! Теперь введите ваш адрес доставки (город, улица, дом/квартира):", {
-      reply_markup: { remove_keyboard: true }
-    });
-  }
-
-  // АДРЕС И ОПЛАТА
-  if (state.step === "waiting_address") {
-    state.address = ctx.message.text;
-    state.step = "idle";
-
-    const keyboard = new InlineKeyboard()
-      .text("💳 Карта / Кошелёк Эсхата", "pay_eshata")
-      .row()
-      .text("💵 Наличными при получении", "pay_cash");
-
-    await ctx.reply("Выберите способ оплаты:", { reply_markup: keyboard });
-    return;
-  }
-
-  // ЧЕК
-  if (state.step === "waiting_receipt") {
-    if (!ctx.message.photo) {
-      return ctx.reply("❌ Пожалуйста, отправьте именно фото/скриншот чека из приложения Эсхата!");
-    }
-
-    const photoId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
-    await createOrderInDb(userId, ctx, "💳 Банк Эсхата (Предоплата)", photoId);
-  }
-});
-
-// КНОПКА ОТВЕТА КЛИЕНТУ
-bot.callbackQuery(/^reply_user_(\d+)$/, async (ctx) => {
-  if (ctx.from.id.toString() !== ADMIN_CHAT_ID.toString()) return;
-  const targetUserId = ctx.match[1];
-  const state = getUserState(ctx.from.id);
-  state.step = `replying_to_${targetUserId}`;
-
-  await ctx.reply(`✍️ Введите текст ответа для пользователя (ID: ${targetUserId}):`);
-  await ctx.answerCallbackQuery();
-});
-
-// ПРОВЕРКА ЧЕКА АДМИНОМ
-bot.callbackQuery(/^receipt_(ok|bad)_(\d+)_(\d+)$/, async (ctx) => {
-  if (ctx.from.id.toString() !== ADMIN_CHAT_ID.toString()) return;
-  const action = ctx.match[1];
-  const orderId = ctx.match[2];
-  const targetUserId = ctx.match[3];
-
-  if (action === "ok") {
-    await ctx.answerCallbackQuery({ text: "Чек подтвержден!" });
-    await bot.api.sendMessage(targetUserId, `✅ <b>Оплата по заказу №${orderId} успешно подтверждена!</b>`, { parse_mode: "HTML" });
-  } else {
-    await ctx.answerCallbackQuery({ text: "Чек отклонен!" });
-    await bot.api.sendMessage(targetUserId, `❌ <b>Оплата по заказу №${orderId} отклонена.</b> Свяжитесь с менеджером.`, { parse_mode: "HTML" });
-  }
-});
-
-// КНОПКИ ИЗМЕНЕНИЯ СТАТУСА ЗАКАЗА (С ВОЗВРАТОМ НА СКЛАД И УВЕДОМЛЕНИЕМ ПОКУПАТЕЛЯ)
-bot.callbackQuery(/^status_(proc|ship|done|canc)_(\d+)_(\d+)$/, async (ctx) => {
-  if (ctx.from.id.toString() !== ADMIN_CHAT_ID.toString()) return;
-
-  const action = ctx.match[1];
-  const orderId = ctx.match[2];
-  const targetUserId = ctx.match[3];
-
-  const statusMap = {
-    proc: "⚙️ В обработке",
-    ship: "🚚 В доставке",
-    done: "✅ Выполнен",
-    canc: "❌ Отменен"
-  };
-
-  const statusText = statusMap[action];
-
-  try {
-    const existingOrder = await db.get("SELECT status FROM orders WHERE id = ?", [orderId]);
-
-    // ВОЗВРАТ ТОВАРОВ НА СКЛАД ПРИ ОТМЕНЕ
-    if (action === "canc" && existingOrder && existingOrder.status !== "❌ Отменен") {
-      const items = await db.all("SELECT product_id, quantity FROM order_items WHERE order_id = ?", [orderId]);
-      for (const item of items) {
-        await db.run("UPDATE products SET stock = stock + ? WHERE id = ?", [item.quantity, item.product_id]);
-      }
-    }
-
-    // 1. Обновляем статус в БД
-    await db.run("UPDATE orders SET status = ? WHERE id = ?", [statusText, orderId]);
-
-    // 2. Всплывающее окно
-    await ctx.answerCallbackQuery({ text: `Статус изменен: ${statusText}` });
-
-    // 3. Отправляем сообщение покупателю
-    const userNotification = `ℹ️ <b>Статус вашего заказа №${orderId} изменен!</b>\n\nТекущий статус: <b>${statusText}</b>`;
-    await bot.api.sendMessage(targetUserId, userNotification, { parse_mode: "HTML" });
-
-  } catch (err) {
-    console.error("Ошибка при обновлении статуса:", err.message);
-    await ctx.answerCallbackQuery({ text: "Ошибка при отправке уведомления покупателю", show_alert: true });
-  }
-});
-
-// Обязательно должна быть функция bot.on или bot.hears!
-bot.on("message:text", async (ctx) => {
-  const userId = ctx.from.id;
-
-  // Ваш блок проверки состояния находится ВНУТРИ функции
-  if (state.step === "waiting_question") {
-    state.step = "idle";
     const userQuery = ctx.message.text;
 
-    const products = await db.all("SELECT name, price, brand, category FROM products WHERE is_active = 1");
-    const productContext = products.map(p => `- ${p.name} (${p.brand}): ${p.price} руб.`).join("\n");
+    // Продвинутая проверка: если пользователь нажал на системную кнопку меню, а не задал вопрос
+    const systemButtons = ["🛒 Корзина", "📦 Каталог", "🔍 Поиск", "📞 Контакты"];
+    if (systemButtons.includes(userQuery)) {
+      state.step = "idle";
+      return; // Даем сработать стандартным обработчикам кнопок
+    }
 
     try {
-      await ctx.reply("🤖 *ИИ-консультант думает над ответом...*", { parse_mode: "Markdown" });
+      // Показываем плашку "печатает..." в чате Telegram для лучшего UX
+      await ctx.replyWithChatAction("typing");
 
-      const systemInstruction = `Ты — вежливый AI-консультант в интернет-магазине. 
-Вот актуальный каталог товаров:
+      // 1. Достаем актуальный каталог (ограничиваем выборку или берем только активные)
+      const products = await db.all(
+        "SELECT id, name, price, brand, category, sizes, stock FROM products WHERE is_active = 1 AND stock > 0 LIMIT 100"
+      );
+
+      let productContext = "К сожалению, сейчас в наличии нет товаров.";
+      if (products.length > 0) {
+        productContext = products
+          .map(p => `• [ID: ${p.id}] ${p.brand} ${p.name} | Категория: ${p.category} | Размеры: ${p.sizes || 'Универсальный'} | Цена: ${p.price} руб. | В наличии: ${p.stock} шт.`)
+          .join("\n");
+      }
+
+      // 2. Формируем подробную системную инструкцию
+      const systemInstruction = `Ты — эксперт-консультант и вежливый менеджер интернет-магазина.
+Твоя цель: помочь клиенту подбирать товары, отвечать на вопросы по ассортименту и стимулировать к покупке.
+
+АКТУАЛЬНЫЙ КАТАЛОГ ТОВАРОВ В НАЛИЧИИ:
 ${productContext}
 
-Отвечай кратко, вежливо и помогай клиенту с выбором. Если не знаешь ответа, предложи связаться с менеджером.`;
+ПРАВИЛА И ОГРАНИЧЕНИЯ:
+1. Отвечай дружелюбно, структурировано и кратко (не более 2-3 абзацев).
+2. Опирайся ТОЛЬКО на список товаров выше. Не придумывай товары, которых нет в списке.
+3. Если пользователь спрашивает про конкретную вещь, укажи её бренд, цену и доступные размеры.
+4. Запрещено использовать HTML-теги (<, >, &), пиши простым текстом без сложного форматирования.
+5. Если клиенту нужен оператор или ты не можешь помочь — посоветуй нажать кнопку "🙋‍♂️ Задать вопрос человеку".`;
 
+      // 3. Запрос к Gemini 2.5 Flash
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: userQuery,
-        config: { systemInstruction }
+        config: { 
+          systemInstruction,
+          temperature: 0.5, // Немного снижаем температуру для более точных ответов по базе
+        }
       });
 
-      const aiAnswer = response.text;
-      const keyboard = new InlineKeyboard().text("🙋‍♂️ Задать вопрос человеку", "ask_human");
+      // Очищаем полученный текст от возможных HTML-тегов во избежание сбоя parse_mode
+      let aiAnswer = (response.text || "Извините, не удалось сформировать ответ.")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
 
-      // Находясь внутри (ctx) => { ... }, return сработает без ошибок!
-       await ctx.reply(`🤖 <b>Ответ ИИ-помощника:</b>\n\n${aiAnswer}`, {
+      const keyboard = new InlineKeyboard()
+        .text("🙋‍♂️ Задать вопрос человеку", "ask_human")
+        .row()
+        .text("❌ Завершить диалог с ИИ", "finish_ai_dialog");
+
+      // 4. Отправка ответа
+      await ctx.reply(`🤖 <b>Ответ ИИ-помощника:</b>\n\n${aiAnswer}`, {
         parse_mode: "HTML",
         reply_markup: keyboard
       });
 
+      // ПРИМЕЧАНИЕ: state.step НЕ сбрасываем в "idle" сразу! 
+      // Это позволяет пользователю продолжить вести диалог с ИИ дальше.
+
     } catch (error) {
-      console.error("Ошибка Gemini:", error);
+      console.error("Ошибка Gemini API:", error);
+      state.step = "idle"; // При ошибке сбрасываем шаг
 
       const username = ctx.from.username ? `@${ctx.from.username}` : "Без username";
       const replyKb = new InlineKeyboard().text("💬 Ответить клиенту", `reply_user_${userId}`);
 
       await bot.api.sendMessage(
         ADMIN_CHAT_ID,
-        `❓ <b>ВОПРОС ОТ КЛИЕНТА</b> ${username} (ID: <code>${userId}</code>):\n\n"${userQuery}"`,
+        `❓ <b>ВОПРОС ОТ КЛИЕНТА (Сбой ИИ)</b> ${username} (ID: <code>${userId}</code>):\n\n"${userQuery}"`,
         { parse_mode: "HTML", reply_markup: replyKb }
       );
 
-      return await ctx.reply("✅ Ваш вопрос передан менеджеру!");
+      await ctx.reply("🤖 ИИ-консультант временно недоступен. Ваш вопрос перенаправлен менеджеру!");
     }
   }
-}); // Закрывающая скобка обработчика bot.on
+});
+
+// Кнопка для выхода из диалога с ИИ обратно в общее меню
+bot.callbackQuery("finish_ai_dialog", async (ctx) => {
+  const state = getUserState(ctx.from.id);
+  state.step = "idle";
+  await ctx.answerCallbackQuery({ text: "Режим консультанта выключен" });
+  await ctx.reply("👍 Вы вышли из режима консультации. Чем еще могу помочь?");
+});
 
 // 🚀 ЗАПУСК ВЕБ-СЕРВЕРА И БОТА
 async function startApp() {
